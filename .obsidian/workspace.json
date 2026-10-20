@@ -1,0 +1,225 @@
+{
+  "main": {
+    "id": "ddbf13d25437f5e0",
+    "type": "split",
+    "children": [
+      {
+        "id": "691567de4db09345",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "0fa723cc0d3e6ce7",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "03 - API/API - Estoque.md",
+                "mode": "preview",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "API - Estoque"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "7d7a587ede7e41ab",
+    "type": "split",
+    "children": [
+      {
+        "id": "6b07be86501e1074",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "b2d84496d4e97a2b",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de arquivos"
+            }
+          },
+          {
+            "id": "451be63fc406221b",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Procurar"
+            }
+          },
+          {
+            "id": "1d91106a7eaa8b85",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "fb1a3c22552de546",
+    "type": "split",
+    "children": [
+      {
+        "id": "12f41ab80e73be8e",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "a01af09e039d0673",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "03 - API/API - Estoque.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Links inversos para API - Estoque"
+            }
+          },
+          {
+            "id": "71adc2f5f5cad68c",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "03 - API/API - Estoque.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Links de saída para API - Estoque"
+            }
+          },
+          {
+            "id": "4b0affb212c30ff0",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "2e84068ac9c5c919",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas as propriedades"
+            }
+          },
+          {
+            "id": "55e59bade6772acb",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "03 - API/API - Estoque.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Sumário de API - Estoque"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir a troca rápida": false,
+      "graph:Abrir visualização em gráfico": false,
+      "canvas:Criar novo canvas": false,
+      "daily-notes:Abrir a nota de hoje": false,
+      "templates:Inserir modelo": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Criar nova base": false
+    }
+  },
+  "active": "0fa723cc0d3e6ce7",
+  "lastOpenFiles": [
+    "03 - API/API - Clientes.md",
+    "03 - API/API - Autenticacao.md",
+    "01 - Arquitetura/Padroes de Projeto.md",
+    "01 - Arquitetura/Estrutura de Pastas.md",
+    "00 - Home.md",
+    "08 - Dados de Teste/Credenciais e Seeds.md",
+    "08 - Dados de Teste/Credenciais e Seeds.md.tmp.22700.1777903611778",
+    "08 - Dados de Teste",
+    "07 - Qualidade/SonarQube.md",
+    "07 - Qualidade/SonarQube.md.tmp.22700.1777903590387",
+    "07 - Qualidade",
+    "06 - Seguranca/Spring Security Config.md",
+    "06 - Seguranca/Spring Security Config.md.tmp.22700.1777903570242",
+    "06 - Seguranca/OWASP ZAP.md",
+    "06 - Seguranca/OWASP ZAP.md.tmp.22700.1777903553597",
+    "06 - Seguranca/JWT.md",
+    "06 - Seguranca/JWT.md.tmp.22700.1777903528796",
+    "06 - Seguranca",
+    "05 - Ambientes/Configuracao Docker.md",
+    "05 - Ambientes/Configuracao Docker.md.tmp.22700.1777903508180",
+    "05 - Ambientes/Configuracao Local.md",
+    "05 - Ambientes/Variaveis de Ambiente.md",
+    "05 - Ambientes/Variaveis de Ambiente.md.tmp.22700.1777903479910",
+    "04 - Como Rodar/Rodando Testes.md",
+    "04 - Como Rodar/Docker Compose.md",
+    "04 - Como Rodar/Requisitos.md",
+    "04 - Como Rodar/Quickstart.md",
+    "03 - API/API - Monitoramento.md",
+    "03 - API/API - Orcamento.md",
+    "03 - API/API - Servicos.md",
+    "03 - API/API - Ordens de Servico.md",
+    "03 - API/API - Estoque.md",
+    "03 - API/API - Pecas e Suprimentos.md",
+    "03 - API/API - Veiculos.md",
+    "02 - Regras de Negocio/Dominio DDD.md",
+    "02 - Regras de Negocio/Autorizacao e Roles.md"
+  ]
+}
