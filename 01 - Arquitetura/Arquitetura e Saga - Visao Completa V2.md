@@ -284,11 +284,34 @@ o tamanho do domínio. (Ver ADR-0005.)
   (`POST /auth/login`, validando no Customer Service). Token de cliente carrega
   `clientId` + `roles:[CLIENT]`; token de staff carrega as roles reais (ADMIN/
   TECHNICIAN), sem `clientId`.
-- **Validação:** o API Gateway usa um **Lambda authorizer** para proteger todas as
-  rotas, exceto `/auth` e `/auth/login` (públicas por definição).
+- **Validação na borda:** o API Gateway usa um **Lambda authorizer** para proteger as
+  rotas do os-service, exceto `/auth` e `/auth/login` (públicas por definição).
+- **Validação por serviço (defesa em profundidade):** além da borda, **cada
+  microsserviço valida o JWT por conta própria** (Spring Security + filtro HS256 com o
+  mesmo segredo). Assim as chamadas internas (serviço→serviço) também exigem token, não
+  só as que entram pelo gateway. Rotas públicas por serviço: health/Swagger; billing
+  `POST /api/payments/webhook` (gateway de pagamento externo); customer
+  `POST /api/users/auth/validate` (usado pela Lambda) — `signup` exige ADMIN.
+- **Token de serviço:** nas chamadas internas (ex.: os-service → customer-service), o
+  chamador emite um **JWT de serviço** (staff, curta duração) com o segredo
+  compartilhado — inclusive nas threads assíncronas da Saga.
 - **Autorização por role:** os serviços leem as roles das claims. No OS Service, a
   decisão de orçamento valida **ownership** — um cliente só decide a própria OS;
   staff decide qualquer uma.
+
+### Boas práticas OWASP
+
+| OWASP Top 10 | Como é tratado |
+|---|---|
+| A01 Broken Access Control | Autorização por role em todas as rotas; ownership na decisão do orçamento; JWT validado por serviço. |
+| A02 Cryptographic Failures | Senha de staff com **BCrypt**; JWT assinado (HS256); segredos fora do código (secret manager). |
+| A03 Injection | **Bean Validation** (`@Valid`) nos DTOs; acesso a dados via Spring Data (JPA/Mongo) parametrizado — sem concatenação de query. |
+| A05 Security Misconfiguration | Headers `X-Frame-Options: DENY` + `nosniff`; `k8s/secret.yaml` com placeholders (`REPLACE_ME`), segredos reais injetados no deploy. |
+| A07 Identification & Auth Failures | Fluxos de login dedicados; throttling no gateway contra brute-force/enumeração de CPF. |
+| A09 Logging Failures | Logs estruturados (JSON) correlacionados por `saga_id`; **CPF mascarado** no log. |
+
+> O hotspot `java:S4502` (CSRF desabilitado) é marcado **Safe** no SonarCloud: as APIs
+> são REST **stateless** com JWT (sem cookie de sessão), onde CSRF não se aplica.
 
 ---
 
@@ -308,12 +331,17 @@ Visão de ponta a ponta, do ponto de vista de quem usa:
 - Consultar o histórico das próprias OS.
 - **Aprovar ou recusar** o orçamento da própria OS (ownership garantido).
 - Receber **e-mail** a cada mudança de status da OS.
+- Receber por **e-mail o link de pagamento** (checkout) quando a cobrança é criada;
+  consultar o link a qualquer momento em `GET /api/payments/service-order/{osId}`.
 
 **Sistema (automático)**
 - Orquestração da Saga: reserva de estoque, geração de orçamento, confirmação/
   liberação de reserva, cobrança e entrega — com compensações.
-- Integração de pagamento (Mercado Pago) com webhook.
-- Notificação de status por SNS/e-mail.
+- **Cobrança automática:** ao entrar em `PAGAMENTO_PENDENTE`, a Saga cria a cobrança
+  no Billing sem ação manual.
+- Integração de pagamento (Mercado Pago) com webhook **idempotente** que confirma o
+  pagamento e avança a OS (`PAGAMENTO_APROVADO` → PAGO → ENTREGUE).
+- Notificação de status e link de pagamento por SNS/e-mail.
 - Observabilidade (métricas, logs correlacionados por `saga_id`).
 
 ---
