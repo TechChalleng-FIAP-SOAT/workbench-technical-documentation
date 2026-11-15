@@ -11,116 +11,70 @@ aliases:
 
 # Quickstart — Subir o Projeto
 
-> [!tip] Em 5 minutos
-> Siga os passos abaixo para ter o projeto rodando localmente com banco de dados e dados de teste pré-carregados.
+A plataforma são **4 microsserviços** (os, customer, billing, execution) + mensageria
+(SNS/SQS) + 4 bancos. Localmente tudo sobe com **um** `docker compose`, sem AWS e sem custo.
 
-## Pré-requisitos
+> [!info] Repositórios lado a lado
+> O compose fica em `workbench-messaging` e faz o build dos serviços a partir das pastas
+> irmãs (`../workbench-os-service`, `../workbench-customer-service`, …). Clone os
+> repositórios na mesma pasta pai.
 
-- [ ] Java 21 JDK instalado (`java -version`)
-- [ ] Docker e Docker Compose instalados (`docker --version`)
-- [ ] Portas livres: **5432** (PostgreSQL), **8080** (App), **9000** (SonarQube)
-
----
-
-## Passo 1 — Clonar o Repositório
+## 1. Subir tudo (≈ 3–5 min no primeiro build)
 
 ```bash
-git clone <url-do-repositorio>
-cd workbench-monolith
+cd workbench-messaging
+docker compose -f docker-compose.dev.yml --profile app up -d --build
+docker compose -f docker-compose.dev.yml --profile app ps      # tudo "healthy"
 ```
 
----
-
-## Passo 2 — Subir a Infraestrutura (Banco de Dados)
-
-```bash
-docker compose up -d
-```
-
-Isso sobe:
-- **PostgreSQL 16** em `localhost:5432`
-- Executa `init.sh` automaticamente — cria tabelas + semeia dados de teste
-
-> [!info] Aguardar Inicialização
-> Na primeira execução, o PostgreSQL leva ~30 segundos para estar pronto. Verifique com:
-> ```bash
-> docker compose logs postgres
-> ```
-
----
-
-## Passo 3 — Rodar a Aplicação
-
-```bash
-./mvnw spring-boot:run
-```
-
-A aplicação inicia em `http://localhost:8080`.
-
----
-
-## Passo 4 — Verificar que Está Rodando
-
-```bash
-# Deve retornar 200 (redireciona para Swagger UI)
-curl -I http://localhost:8080/swagger-ui/index.html
-```
-
-Acesse: **http://localhost:8080/swagger-ui/index.html**
-
----
-
-## Passo 5 — Fazer Login e Testar
-
-```bash
-# Obter token JWT
-TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"superadmin@system.com","password":"coxinha123"}' \
-  | jq -r '.token')
-
-# Usar o token
-curl -H "Authorization: Bearer $TOKEN" \
-     http://localhost:8080/api/clients
-```
-
-**Credenciais padrão:**
-- Email: `superadmin@system.com`
-- Senha: `coxinha123`
-
----
-
-## Executar Fluxo Completo de Validação
-
-```bash
-chmod +x validation.sh
-./validation.sh
-```
-
-Este script simula um ciclo completo: criação de OS → diagnóstico → reserva de estoque → orçamento → aprovação → execução → finalização → entrega.
-
----
-
-## Atalhos Úteis
-
-| O que fazer | Comando |
+| Porta | O quê |
 |---|---|
-| Ver logs da aplicação | `docker compose logs app -f` |
-| Ver logs do banco | `docker compose logs postgres -f` |
-| Parar tudo | `docker compose down` |
-| Parar e apagar volumes | `docker compose down -v` |
-| Recompilar e rodar | `./mvnw clean spring-boot:run` |
+| `8000` | **Gateway local** (nginx) — mesmo roteamento do API Gateway da AWS |
+| `8080` · `8081` · `8082` · `8083` | os · customer · billing · execution (acesso direto) |
+| `4566` | LocalStack (SNS/SQS) |
+| `15432` · `15433` · `15434` · `27017` | Postgres os · billing · customer · MongoDB execution |
 
----
+Swagger de cada serviço: `http://localhost:<porta>/swagger-ui/index.html`.
 
-## Próximos Passos
+## 2. Token de acesso
 
-- Ver todos os endpoints: [[00 - Home#Rotas da API]]
-- Entender o fluxo de negócio: [[Ciclo de Vida da OS]]
-- Rodar testes: [[Rodando Testes]]
-- Configurar variáveis: [[Variaveis de Ambiente]]
+Localmente não existe a Lambda de login: gere um JWT de ADMIN assinado com o `JWT_SECRET`
+de dev (ver [[JWT#Gerar um token de dev]]):
+
+```bash
+export TOKEN=$(python3 - <<'PY'
+import base64,hashlib,hmac,json,time
+b=lambda x: base64.urlsafe_b64encode(x).rstrip(b'=').decode()
+n=int(time.time()); h=b(json.dumps({"alg":"HS256","typ":"JWT"}).encode())
+p=b(json.dumps({"sub":"admin@workbench.dev","roles":["ADMIN"],"iat":n,"exp":n+86400}).encode())
+s=b(hmac.new(b"akmsdkmasfnjsgknakmsdkmasdkmsadfkmdsakmdkmsadsa",f"{h}.{p}".encode(),hashlib.sha256).digest())
+print(f"{h}.{p}.{s}")
+PY
+)
+curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8000/service-types
+```
+
+## 3. Testar o fluxo
+
+- **Passo a passo da Saga (curl):** `SAGA-E2E-LOCAL.md` na raiz do workspace.
+- **Postman/Bruno:** `postman/workbench-plataforma.postman_collection.json` — aponte
+  `osUrl`, `customerUrl`, `billingUrl` e `executionUrl` para `http://localhost:8000`.
+
+## 4. Derrubar
+
+```bash
+docker compose -f docker-compose.dev.yml --profile app down       # mantém os dados
+docker compose -f docker-compose.dev.yml --profile app down -v    # apaga os bancos
+```
+
+## Alternativa: só a infra + serviços pelo Maven
+
+Para depurar um serviço na IDE: suba só a infra (`docker compose -f docker-compose.dev.yml up -d`,
+sem profile), rode `./bootstrap-localstack.sh` para criar as filas e suba cada serviço com
+`./mvnw spring-boot:run` e as variáveis do `SAGA-E2E-LOCAL.md` (Passo 3).
 
 ## Links Relacionados
 - [[Requisitos]]
 - [[Docker Compose]]
+- [[Variaveis de Ambiente]]
 - [[Credenciais e Seeds]]

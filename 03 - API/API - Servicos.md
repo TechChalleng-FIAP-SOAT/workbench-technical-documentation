@@ -3,110 +3,98 @@ title: API — Serviços
 tags:
   - api
   - servicos
+  - catalogo
+  - execucao
 aliases:
   - Services API
+  - Service Types API
 ---
 
 # API — Serviços
 
-> [!info] Serviço vs Ordem de Serviço
-> Uma OS contém um ou mais **Serviços**. Cada serviço tem seu próprio status (`TO_DO → DOING → DONE`). A OS só pode ser finalizada quando todos os serviços estiverem `DONE`.
+**Serviço dono:** OS Service (`/service-types` e `/order/{id}/services`)
 
-## POST /services — Criar Serviço para uma OS
+> [!info] Onde chamar
+> - **AWS:** sempre pelo API Gateway — `{{gatewayUrl}}{path}`. O gateway roteia
+>   `/api/clients|vehicles|users` → Customer, `/api/budgets|payments` → Billing,
+>   `/api/products|stocks` → Execution e o resto (`/order`, `/service-types`,
+>   `/monitoring`) → OS Service.
+> - **Local:** `docker compose -f workbench-messaging/docker-compose.dev.yml --profile app up -d --build`
+>   e use o gateway local `http://localhost:8000` (mesmo roteamento) ou o serviço direto:
+>   OS `:8080`, Customer `:8081`, Billing `:8082`, Execution `:8083`.
+> - Todas as rotas abaixo exigem `Authorization: Bearer <jwt>` salvo indicação contrária.
+>   Erros seguem `{"timestamp": "...", "status": 409, "error": "mensagem em português"}`.
 
-**Request Body:**
+> [!info] Tipo de serviço × serviço da OS
+> - **Tipo de serviço** é o catálogo (ex.: `TROCA_OLEO`), com custo e horas de mão de obra padrão.
+> - **Serviço da OS** é a instância daquele tipo dentro de uma OS, com status próprio
+>   `TO_DO → DOING → DONE`. Quando o último serviço fica `DONE`, a OS vai para `FINALIZADA`.
+
+## Catálogo — `/service-types` · ADMIN, TECHNICIAN
+
+| Método | Rota | Resposta |
+|---|---|---|
+| GET | `/service-types` | 200 lista |
+| GET | `/service-types/{id}` | 200 · 404 |
+| POST | `/service-types` | 201 · 409 nome já existe · 400 dados inválidos |
+| PUT | `/service-types/{id}` | 200 (descrição + mão de obra) · 404 |
+| PUT | `/service-types/{id}/labor-cost` | 200 (só mão de obra) · 404 |
+| DELETE | `/service-types/{id}` | 204 · 404 |
+
+### POST /service-types
+
 ```json
-{
-  "serviceOrderId": "uuid-da-os",
-  "serviceTypeId": "uuid-do-tipo",
-  "description": "Trocar pastilhas dianteiras e traseiras"
-}
+{ "name": "troca de pastilha", "description": "Troca das pastilhas dianteiras", "laborCost": 120.00, "laborHours": 1.5 }
 ```
-
-**Response 201:**
+**201**
 ```json
-{
-  "id": "uuid",
-  "serviceOrderId": "uuid-da-os",
-  "serviceType": { "id": "uuid", "name": "Freios" },
-  "description": "Trocar pastilhas dianteiras e traseiras",
-  "status": "TO_DO",
-  "createdAt": "2024-01-15T10:00:00"
-}
+{ "id": "7b1c...", "name": "TROCA_DE_PASTILHA", "description": "Troca das pastilhas dianteiras",
+  "laborCost": 120.00, "laborHours": 1.5 }
 ```
+- O nome é normalizado (maiúsculas, espaços → `_`) e **não muda depois**: é a chave que a
+  OS e o diagnóstico usam.
+- `laborCost` e `laborHours` ≥ 0 (padrão de custo: 0).
 
----
+### PUT /service-types/{id}
 
-## GET /services — Listar Todos os Serviços
-
----
-
-## GET /services/{id} — Buscar Serviço por ID
-
----
-
-## GET /services/os/{idOS} — Listar Serviços de uma OS
-
-```bash
-GET /services/os/uuid-da-os
-```
-
-Retorna todos os serviços vinculados à OS informada.
-
----
-
-## PATCH /services/update-status — Atualizar Status do Serviço
-
-**Request Body:**
 ```json
-{
-  "serviceId": "uuid-do-servico",
-  "status": "DOING"
-}
+{ "description": "Troca de pastilhas (eixo dianteiro)", "laborCost": 130.00, "laborHours": 1.5 }
 ```
+`laborCost` obrigatório. `PUT /{id}/labor-cost` aceita só `{ "laborCost": ..., "laborHours": ... }`.
 
-**Transições válidas:**
-```
-TO_DO → DOING → DONE
-```
+> [!note] Excluir um tipo
+> As OS já abertas guardam o **nome** do tipo, então seguem funcionando; o tipo excluído
+> só deixa de poder ser usado em OS novas (422 na abertura).
 
-> [!danger] Sem Volta
-> Não é possível retroceder o status de um serviço. `DONE` é estado final.
+## Execução — serviços de uma OS · ADMIN, TECHNICIAN
 
-**Response 200:** serviço atualizado
+### GET /order/{id}/services
 
----
-
-## GET /service-types — Listar Tipos de Serviço
-
-Retorna os tipos de serviço cadastrados no sistema (ex: "Freios", "Motor", "Suspensão").
-
-**Response 200:**
+**200**
 ```json
-[
-  { "id": "uuid", "name": "Freios" },
-  { "id": "uuid", "name": "Motor" },
-  { "id": "uuid", "name": "Suspensão" },
-  { "id": "uuid", "name": "Elétrica" }
-]
+[ { "id": "e2a4...", "serviceType": "TROCA_OLEO", "laborCost": 80.00, "laborHours": 1.0,
+    "status": "DOING",
+    "history": [ { "status": "TO_DO", "changedAt": "..." }, { "status": "DOING", "changedAt": "..." } ] } ]
 ```
 
----
+### PATCH /order/{id}/services/{serviceId}/status
 
-## PUT /services/{id} — Atualizar Serviço
-
-Permite alterar a descrição do serviço.
-
-**Request Body:**
 ```json
-{
-  "description": "Descrição atualizada do serviço"
-}
+{ "status": "DOING" }
 ```
+| Status | Quando |
+|---|---|
+| 200 | serviço avançou (corpo = serviço atualizado) |
+| 400 | `status` ausente |
+| 404 | OS inexistente ou serviço não pertence à OS |
+| 409 | OS fora de `EM_EXECUCAO` |
+| 422 | pulou etapa ou voltou (só `TO_DO → DOING → DONE`) |
+
+O histórico (`DOING` → `DONE`) alimenta o tempo médio de execução — [[API - Monitoramento]].
 
 ---
 
 ## Links Relacionados
-- [[Ciclo de Vida da OS]]
 - [[API - Ordens de Servico]]
 - [[API - Monitoramento]]
+- [[Ciclo de Vida da OS]]

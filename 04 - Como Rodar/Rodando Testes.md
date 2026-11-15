@@ -3,133 +3,61 @@ title: Rodando Testes
 tags:
   - como-rodar
   - testes
-  - jacoco
-  - testcontainers
+  - cobertura
 aliases:
   - Testes
-  - Test Suite
+  - Cobertura
 ---
 
 # Rodando Testes
 
-## Tipos de Teste
+Cada serviço roda seus testes com o wrapper, dentro do próprio repositório:
 
-| Tipo | Nomenclatura | Executado por | Requisito |
+```bash
+./mvnw verify          # unit + integração + contrato (+ BDD no os) + gate de cobertura 80%
+./mvnw test            # só os unitários (rápido, sem Docker)
+```
+
+O `verify` precisa de **Docker** rodando (Testcontainers sobe Postgres ou MongoDB).
+
+## Tipos de teste
+
+| Tipo | Onde | Exemplos |
+|---|---|---|
+| Unitário (domínio e casos de uso) | `src/test/java/.../domain`, `.../application` | regras de transição da OS, `SagaState`, reserva de estoque |
+| Controller (MockMvc standalone) | `.../adapter/in/web` | códigos HTTP, validação, mensagens de erro |
+| Integração | `.../integration/*IntegrationTest` (failsafe) | API real + banco real via Testcontainers, cabeçalhos de segurança |
+| Contrato da Saga | `.../contract/*SagaContractTest` | mensagens publicadas e consumidas batem com `contracts/saga-messages.json` |
+| BDD (Cucumber) | os-service: `src/test/resources/features/*.feature` | ciclo de vida da OS em português |
+
+Surefire roda os unitários; failsafe roda os `*IntegrationTest` (e o BDD).
+
+## Cobertura
+
+JaCoCo com **gate de 80% de linhas** no `verify` (o build falha abaixo disso). Relatório em
+`target/site/jacoco/index.html`.
+
+| Serviço | Linhas | Branches | Testes (11/11/2026) |
 |---|---|---|---|
-| Unitário | `*Test.java` | Maven Surefire | Nenhum |
-| Integração | `*IT.java` | Maven Failsafe | Docker (Testcontainers) |
+| os-service | 89,8% | 72,0% | 222 |
+| execution-service | 88,7% | 76,5% | 67 |
+| customer-service | 86,6% | 62,8% | 76 |
+| billing-service | 85,6% | 71,9% | 66 |
 
----
+No CI, o job `unit-test` publica o relatório como artefato `jacoco-report` e o job
+`code-analysis` envia a cobertura ao SonarCloud ([[SonarQube]]).
 
-## Comandos
+## Contrato da Saga
 
-### Apenas Testes Unitários
-```bash
-./mvnw clean package
-# ou
-./mvnw test
-```
-
-Não requer Docker. Executa apenas os arquivos `*Test.java`.
-
----
-
-### Testes Unitários + Integração
-```bash
-./mvnw clean verify
-```
-
-Requer Docker. O Testcontainers sobe automaticamente um container PostgreSQL 16 para os testes de integração.
-
----
-
-### Apenas Testes de Integração
-```bash
-./mvnw failsafe:integration-test failsafe:verify
-```
-
----
-
-### Relatório de Cobertura (JaCoCo)
-```bash
-./mvnw test jacoco:report
-```
-
-Relatório disponível em:
-```
-target/site/jacoco/index.html
-```
-
-Abra no browser para ver cobertura por classe, método e linha.
-
----
-
-### Análise SonarQube com Cobertura
-```bash
-# Gerar cobertura + enviar para Sonar
-./mvnw clean verify sonar:sonar
-```
-
-O JaCoCo gera `target/site/jacoco/jacoco.xml`, que o SonarQube lê automaticamente (configurado no `pom.xml`).
-
----
-
-## O que é Testado
-
-### Testes de Integração (Testcontainers)
-- Mapeamentos JPA das entidades
-- Conversores customizados (`ListToJsonConverter`, `ServiceStatusConverter`)
-- Queries do Spring Data (JPQL + derived queries)
-- Constraints do banco (unique, not-null, foreign keys)
-- Persistência de enums (`@Enumerated`)
-
-### Configuração do Banco de Teste
-
-`src/test/resources/application-integration.yml`:
-```yaml
-spring:
-  datasource:
-    url: jdbc:tc:postgresql:16:///workshop  # Testcontainers URL especial
-  jpa:
-    hibernate:
-      ddl-auto: create-drop                 # Recria schema a cada teste
-```
-
-> [!info] Testcontainers URL
-> `jdbc:tc:postgresql:16:///workshop` é interpretado pelo Testcontainers — ele sobe automaticamente um container PostgreSQL 16 e destrói ao terminar os testes.
-
----
-
-## Script de Validação End-to-End
+A fonte única é `workbench-messaging/contracts/saga-messages.json`. Depois de mudar o
+contrato, copie para os serviços:
 
 ```bash
-chmod +x validation.sh
-./validation.sh
+cd workbench-messaging && scripts/sync-saga-contract.sh          # copia
+scripts/sync-saga-contract.sh --check                             # só confere
 ```
-
-Simula o fluxo completo de uma OS usando `curl`:
-1. Login → obtém token
-2. Cria cliente e veículo
-3. Cria OS
-4. Diagnóstico → reserva estoque
-5. Aguarda aprovação → cliente aprova
-6. Técnico executa serviços (TO_DO → DOING → DONE)
-7. Finaliza OS → confirma reservas
-8. Entrega veículo
-
----
-
-## Cobertura Mínima Recomendada
-
-| Nível | Meta |
-|---|---|
-| Geral | ≥ 70% |
-| Domínio (business rules) | ≥ 85% |
-| Controllers | ≥ 60% |
-
----
+O CI dos 3 serviços da Saga falha se a cópia divergir da `main` do `workbench-messaging`.
 
 ## Links Relacionados
 - [[SonarQube]]
-- [[Docker Compose]]
-- [[Quickstart]]
+- [[Requisitos]]

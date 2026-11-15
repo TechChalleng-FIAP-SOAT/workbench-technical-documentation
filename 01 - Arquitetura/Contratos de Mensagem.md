@@ -35,20 +35,33 @@ Todas as mensagens compartilham o mesmo envelope:
 
 ## Tabela de contratos
 
-| Tipo | Direção | Emissor → Consumidor | Payload (campos) | Dispara | Compensação |
-|---|---|---|---|---|---|
-| `ComandoReservarEstoque` | Comando | OS → Execution | `items[]: {productId, quantity}` | reserva atômica no estoque | `ComandoLiberarReserva` |
-| `ReservaConfirmada` | Evento | Execution → OS | `reservationIds[]` | OS pede orçamento | — |
-| `ReservaFalhou` | Evento | Execution → OS | `reason`, `missing[]: {productId, faltante}` | aborta Saga | — |
-| `ComandoGerarOrcamento` | Comando | OS → Billing | `reservationIds[]` | gera orçamento (snapshot de preço) | `ComandoCancelarOrcamento` |
-| `OrcamentoGerado` | Evento | Billing → OS | `budgetId`, `totalPrice` | OS → `AGUARDANDO_APROVACAO` | — |
-| `ComandoCobrarPagamento` | Comando | OS → Billing | `budgetId` (após aprovação do cliente) | cria pagamento no Mercado Pago | `ComandoEstornarPagamento` |
-| `PagamentoConfirmado` | Evento | Billing → OS | `paymentId`, `amount` | OS → `EM_EXECUCAO` | — |
-| `PagamentoFalhou` | Evento | Billing → OS | `paymentId`, `reason` | OS dispara compensações | — |
-| `ComandoLiberarReserva` | Comando (comp.) | OS → Execution | `reservationIds[]` | libera reservas ACTIVE | — (idempotente) |
-| `ComandoCancelarOrcamento` | Comando (comp.) | OS → Billing | `budgetId` | cancela orçamento | — (idempotente) |
-| `ComandoEstornarPagamento` | Comando (comp.) | OS → Billing | `paymentId` | estorno no Mercado Pago | — (idempotente) |
-| `OSFinalizada` | Evento | Execution → OS | `serviceOrderId` | OS → `FINALIZADA` | — |
+> **Fonte de verdade executável:** `workbench-messaging/contracts/saga-messages.json`.
+> Cada serviço da Saga tem um teste de contrato (`*SagaContractTest`) que lê uma cópia
+> desse arquivo — se o código divergir da tabela, o `mvn verify` falha. Esta tabela
+> reflete o contrato implementado (versão 1, 28/10/2026).
+
+| Tipo | Emissor → Consumidor | Payload (obrigatórios; *opcionais em itálico*) | Efeito |
+|---|---|---|---|
+| `ComandoReservarEstoque` | OS → Execution | `items[]: {productId, quantity}` | reserva atômica (idempotente por OS) |
+| `ReservaConfirmada` | Execution → OS | `reservations`, `parts[]: {productId, quantity, name, itemType, unitPrice, *sku*, *brand*}` | OS pede orçamento |
+| `ReservaFalhou` | Execution → OS | `reason` | Saga → FALHOU |
+| `ComandoGerarOrcamento` | OS → Billing | `parts[]` (repassa as do Execution), `labor[]: {serviceName, laborCost, *laborCode*}`, `customerDocument` | gera orçamento (snapshot) |
+| `OrcamentoGerado` | Billing → OS | `budgetId`, `totalParts`, `totalLabor`, `totalPrice` | OS → `AGUARDANDO_APROVACAO` |
+| `OrcamentoFalhou` | Billing → OS | `reason` | reenvia até 3×; depois compensa (`ComandoLiberarReserva`) |
+| `ComandoConfirmarReserva` | OS → Execution | — | baixa de estoque (na aprovação) |
+| `ReservaBaixada` | Execution → OS | `reservations` | limpa pendência |
+| `ComandoLiberarReserva` | OS → Execution | — | devolve estoque (recusa/falha) |
+| `ReservaLiberada` | Execution → OS | `reservations` | Saga → FALHOU (compensação concluída) |
+| `ComandoCobrarPagamento` | OS → Billing | — | cria cobrança no Mercado Pago (idempotente) |
+| `CobrancaCriada` | Billing → OS | `gatewayPaymentId`, `checkoutUrl` | e-mail com link de pagamento |
+| `PagamentoConfirmado` | Billing → OS | — | OS → `PAGO` → `ENTREGUE` |
+| `PagamentoFalhou` | Billing → OS | `reason` | OS retida em `PAGAMENTO_PENDENTE` |
+| `ComandoEstornarPagamento` | OS → Billing | — | estorno (*ainda não enviado pelo OS*) |
+| `PagamentoEstornado` | Billing → OS | `status` | (*ainda não tratado pelo OS*) |
+
+> Nomes de mensagem ficam em português por serem **dados do contrato** trafegados entre
+> serviços; no código, as constantes têm nome em inglês (`SagaMessages.RESERVE_STOCK =
+> "ComandoReservarEstoque"`). Cada evento só é aceito no passo da Saga em que é esperado.
 
 ## Pontos de falha e compensações
 

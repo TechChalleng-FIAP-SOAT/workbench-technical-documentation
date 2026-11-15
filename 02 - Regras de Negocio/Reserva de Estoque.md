@@ -1,87 +1,45 @@
 ---
 title: Reserva de Estoque
 tags:
-  - regras-negocio
+  - regras
   - estoque
-  - transacao-atomica
+  - execution
 aliases:
-  - Stock Reservation
-  - Reserva Atômica
+  - Estoque
+  - Reservas
 ---
 
 # Reserva de Estoque
 
-## Conceito
+**Dono:** execution-service (MongoDB, transação multidocumento).
 
-A reserva de estoque é uma **operação atômica** — múltiplos produtos são reservados em uma única transação. Se qualquer reserva falhar (estoque insuficiente), **todas** são revertidas.
-
-> [!danger] Tudo ou Nada
-> Nunca haverá uma reserva parcial. Ou todos os produtos são reservados com sucesso, ou nenhum é.
-
-## Fórmula do Estoque Disponível
-
-$$
-\text{disponível} = \text{quantidade} - \text{quantidade\_reservada}
-$$
-
-A operação de reserva só prossegue se `disponível >= quantidade_solicitada`.
-
-## Estados de uma Reserva
-
-```mermaid
-stateDiagram-v2
-    [*] --> ACTIVE: POST /api/stocks/reservations
-    ACTIVE --> CONFIRMED: PATCH .../confirm (OS Finalizada)
-    ACTIVE --> RELEASED: PATCH .../release (OS Rejeitada)
-```
-
-| Status | Significado |
-|---|---|
-| `ACTIVE` | Estoque reservado; ainda não consumido |
-| `CONFIRMED` | Estoque efetivamente consumido (OS finalizada) |
-| `RELEASED` | Reserva cancelada; estoque liberado (OS rejeitada ou cancelada) |
-
-## Rastreabilidade de Movimentações
-
-Toda alteração no estoque gera um registro em `StockMovement`:
-
-| Tipo de Movimento | Trigger |
-|---|---|
-| `ENTRY` | Entrada de estoque (`PATCH /entry`) |
-| `EXIT` | Saída manual de estoque (`PATCH /exit`) |
-| `RESERVATION` | Reserva criada para OS |
-| `RESERVATION_CONFIRMED` | Reserva confirmada (consumo real) |
-| `RESERVATION_RELEASED` | Reserva liberada (sem consumo) |
-
-## Alerta de Estoque Mínimo
-
-O campo `minimumQuantity` define o limiar de alerta. O endpoint `/api/stocks/low` lista todos os produtos abaixo do mínimo:
-
-$$
-\text{isLowStock} = \text{availableQuantity} \leq \text{minimumQuantity}
-$$
-
-## Operações de Domínio do Stock
-
-```java
-stock.addQuantity(amount)          // entrada de estoque
-stock.removeQuantity(amount)       // saída manual (valida negatividade)
-stock.reserve(amount, osId)        // reserva atômica (valida disponibilidade)
-stock.releaseReservation(osId)     // libera reserva
-stock.confirmReservation(osId)     // confirma consumo
-stock.isLowStock()                 // verifica limiar mínimo
-```
-
-## Relacionamento com Orçamento
-
-Ao criar ou alterar uma reserva, o sistema publica um `ReservationChangedEvent`. O módulo de orçamento **reage automaticamente** e recalcula o total da OS.
+## Saldo
 
 ```
-Reserva criada → evento → Orçamento recalculado
+availableQuantity = quantity − reservedQuantity
+lowStock          = availableQuantity ≤ minimumQuantity
 ```
+
+## Ciclo da reserva
+
+| Momento | Comando da Saga | Efeito | Reserva |
+|---|---|---|---|
+| Diagnóstico | `ComandoReservarEstoque` | reservado += qtd (peça continua na prateleira) | `ACTIVE` |
+| Orçamento aprovado | `ComandoConfirmarReserva` | quantidade −= qtd, reservado −= qtd (baixa) | `CONFIRMED` |
+| Recusa / falha no orçamento | `ComandoLiberarReserva` | reservado −= qtd (volta ao disponível) | `RELEASED` |
+
+## Regras
+
+- **Tudo ou nada:** valida todos os itens antes de reservar; faltou um → nada é reservado e a
+  resposta é `ReservaFalhou` com o motivo (OS fica em diagnóstico, ver [[Ciclo de Vida da OS]]).
+- **Idempotente por OS:** se já existe reserva `ACTIVE` da OS, o comando repetido devolve a
+  mesma; confirmação e liberação também são idempotentes.
+- Saldo, reserva e movimentação (`StockMovement`: ENTRY, EXIT, RESERVATION…) gravados na
+  **mesma transação**.
+- Saída manual (`PATCH .../exit`) só usa o disponível — não consome o que está reservado.
+
+Rotas: [[API - Estoque]].
 
 ## Links Relacionados
-- [[Ciclo de Vida da OS]]
 - [[Orcamento]]
-- [[API - Estoque]]
-- [[Padroes de Projeto]]
+- [[Dominio DDD]]

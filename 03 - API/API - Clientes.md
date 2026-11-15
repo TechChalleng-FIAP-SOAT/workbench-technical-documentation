@@ -3,160 +3,64 @@ title: API — Clientes
 tags:
   - api
   - clientes
+  - customer
 aliases:
-  - Endpoints de Cliente
+  - Clients API
 ---
 
 # API — Clientes
 
-> [!info] Autenticação Necessária
-> Todos os endpoints requerem `Authorization: Bearer <token>` exceto onde indicado.
+**Serviço dono:** Customer Service (`/api/clients`, PostgreSQL)
 
-## CRUD de Clientes
+> [!info] Onde chamar
+> - **AWS:** sempre pelo API Gateway — `{{gatewayUrl}}{path}`. O gateway roteia
+>   `/api/clients|vehicles|users` → Customer, `/api/budgets|payments` → Billing,
+>   `/api/products|stocks` → Execution e o resto (`/order`, `/service-types`,
+>   `/monitoring`) → OS Service.
+> - **Local:** `docker compose -f workbench-messaging/docker-compose.dev.yml --profile app up -d --build`
+>   e use o gateway local `http://localhost:8000` (mesmo roteamento) ou o serviço direto:
+>   OS `:8080`, Customer `:8081`, Billing `:8082`, Execution `:8083`.
+> - Todas as rotas abaixo exigem `Authorization: Bearer <jwt>` salvo indicação contrária.
+>   Erros seguem `{"timestamp": "...", "status": 409, "error": "mensagem em português"}`.
 
-### POST /api/clients — Criar Cliente
+| Método | Rota | Perfis | Resposta |
+|---|---|---|---|
+| POST | `/api/clients` | ADMIN, TECHNICIAN | 201 cliente · 409 documento já cadastrado · 400 CPF/CNPJ inválido |
+| GET | `/api/clients` | ADMIN, TECHNICIAN | 200 lista |
+| GET | `/api/clients/{id}` | staff ou o próprio cliente | 200 · 403 outro cliente · 404 |
+| GET | `/api/clients/document/{document}` | staff ou o próprio cliente | 200 · 403 · 404 |
+| PUT | `/api/clients/{id}` | ADMIN, TECHNICIAN | 200 · 404 |
+| DELETE | `/api/clients/{id}` | ADMIN, TECHNICIAN | 204 (desativa — soft delete; o login por CPF passa a dar 403) |
 
-**Roles:** ROLE_ADMIN, ROLE_TECHNICIAN
+## POST /api/clients
 
-**Request Body:**
 ```json
-{
-  "name": "João da Silva",
-  "cpf": "529.982.247-25",
-  "email": "joao@email.com",
-  "phone": "11999999999"
-}
+{ "name": "Maria Oliveira", "document": "52998224725", "email": "maria@example.com", "phone": "11999990000" }
 ```
+- `name` e `document` obrigatórios; `name` é gravado em maiúsculas.
+- `document` aceita CPF ou CNPJ (com ou sem máscara) e é validado pelos dígitos verificadores.
 
-**Response 201:**
+**201**
 ```json
-{
-  "id": "uuid",
-  "name": "João da Silva",
-  "cpf": "529.982.247-25",
-  "email": "joao@email.com",
-  "phone": "11999999999",
-  "active": true
-}
+{ "id": 1, "name": "MARIA OLIVEIRA", "document": "52998224725", "email": "maria@example.com",
+  "phone": "11999990000", "active": true, "createdAt": "...", "updatedAt": "..." }
 ```
 
-> [!warning] CPF é imutável
-> Após criar o cliente, o CPF não pode ser alterado.
+## PUT /api/clients/{id}
 
----
-
-### GET /api/clients — Listar Clientes
-
-**Roles:** ROLE_ADMIN, ROLE_TECHNICIAN
-
-Retorna apenas clientes com `active = true`.
-
-**Response 200:**
 ```json
-[
-  { "id": "uuid", "name": "João da Silva", "cpf": "...", ... },
-  { "id": "uuid", "name": "Maria Souza", "cpf": "...", ... }
-]
+{ "name": "Maria Oliveira Souza", "email": "maria.souza@example.com", "phone": "11988887777" }
 ```
+O documento não muda (é a chave usada pela OS e pelo login).
 
----
-
-### GET /api/clients/{id} — Buscar por ID
-
-**Response 200:** objeto cliente | **404:** não encontrado
-
----
-
-### GET /api/clients/cpf/{cpf} — Buscar por CPF
-
-```bash
-GET /api/clients/cpf/529.982.247-25
-GET /api/clients/cpf/52998224725  # sem formatação também funciona
-```
-
----
-
-### PUT /api/clients/{id} — Atualizar Cliente
-
-Permite alterar nome, email e telefone. **CPF é imutável.**
-
-**Request Body:**
-```json
-{
-  "name": "João Silva Atualizado",
-  "email": "novo@email.com",
-  "phone": "11888888888"
-}
-```
-
----
-
-### DELETE /api/clients/{id} — Desativar Cliente (Soft Delete)
-
-Marca o cliente como `active = false`. **Não remove do banco.**
-
-**Response 204** (sem corpo)
-
----
-
-## Portal do Cliente
-
-Endpoints para uso do próprio cliente (ROLE_USER) — retornam apenas dados do usuário autenticado.
-
-### GET /api/clients/my-orders — Minhas OS
-
-**Roles:** ROLE_USER, ROLE_ADMIN, ROLE_TECHNICIAN
-
-Retorna lista de ordens de serviço do cliente autenticado.
-
-**Response 200:**
-```json
-[
-  {
-    "id": "uuid",
-    "status": "AGUARDANDO_APROVACAO",
-    "createdAt": "2024-01-15T10:00:00",
-    "vehicle": { "plate": "ABC-1234", "model": "Civic" },
-    "budget": { "totalAmount": 350.00, "status": "PENDING" }
-  }
-]
-```
-
----
-
-### GET /api/clients/my-orders/{orderId} — Detalhe da OS
-
-Retorna detalhes completos da OS + serviços + orçamento itemizado.
-
-**Response 200:**
-```json
-{
-  "id": "uuid",
-  "status": "AGUARDANDO_APROVACAO",
-  "services": [
-    { "name": "Troca de pastilha", "status": "TO_DO" }
-  ],
-  "budget": {
-    "totalAmount": 350.00,
-    "items": [
-      { "productName": "Pastilha de Freio", "quantity": 2, "unitPrice": 125.00, "subtotal": 250.00 }
-    ]
-  }
-}
-```
-
----
-
-### PATCH /api/clients/my-orders/{orderId}/approve — Aprovar OS
-
-Aprova o orçamento. OS transita de `AGUARDANDO_APROVACAO` → `APROVADO`.
-
-**Response 200** | **409:** OS não está aguardando aprovação
+> [!note] Quem mais consulta
+> O OS Service chama `GET /api/clients/document/{doc}` ao abrir a OS (cliente existe e
+> está ativo) e para achar o e-mail da notificação; a Lambda chama para o login por CPF.
+> Nenhum outro serviço lê o banco do Customer (ADR-0006).
 
 ---
 
 ## Links Relacionados
-- [[Ciclo de Vida da OS]]
-- [[Autorizacao e Roles]]
 - [[API - Veiculos]]
-- [[Orcamento]]
+- [[API - Ordens de Servico]]
+- [[API - Autenticacao]]

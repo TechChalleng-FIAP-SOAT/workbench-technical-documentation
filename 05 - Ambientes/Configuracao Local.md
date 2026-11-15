@@ -1,129 +1,57 @@
 ---
-title: Configuração — Ambiente Local
+title: Configuração Local
 tags:
   - ambientes
   - local
   - desenvolvimento
 aliases:
   - Dev Local
-  - Desenvolvimento
 ---
 
-# Configuração — Ambiente Local
+# Configuração Local
 
-## Topologia
+Dois jeitos de rodar na máquina:
 
-```
-Sua máquina:
-├── JVM → Spring Boot App (porta 8080)
-└── Docker
-    └── PostgreSQL 16 (porta 5432)
-```
+| Jeito | Quando usar | Como |
+|---|---|---|
+| **Tudo no compose** | demo, teste ponta a ponta, scan de segurança | [[Quickstart]] (`--profile app`) |
+| **Infra no compose + serviço na IDE** | depurar/alterar um serviço | abaixo |
 
-A aplicação roda diretamente na JVM (sem Docker) e se conecta ao PostgreSQL que roda em Docker.
-
----
-
-## Setup Inicial
+## Infra no compose + serviço pelo Maven/IDE
 
 ```bash
-# 1. Sobe apenas o banco
-docker compose up -d postgres
-
-# 2. Aguarda estar pronto (opcional)
-docker compose exec postgres pg_isready -U user -d workshop
-
-# 3. Roda a aplicação
-./mvnw spring-boot:run
+cd workbench-messaging
+docker compose -f docker-compose.dev.yml up -d      # LocalStack + bancos
+./bootstrap-localstack.sh                            # tópicos e filas (Terraform → LocalStack)
 ```
 
----
-
-## Configuração Padrão (sem variáveis)
-
-O `application.yml` tem defaults que funcionam com o Docker Compose local:
-
-```
-DB URL:      jdbc:postgresql://localhost:5432/workshop
-DB User:     user
-DB Pass:     password
-JWT Secret:  akmsdkmasfnjsgknakmsdkmasdkmsadfkmdsakmdkmsadsa
-JWT Expiry:  86400000 (24h)
-Port:        8080
-```
-
-Nenhuma variável de ambiente precisa ser definida para desenvolvimento local.
-
----
-
-## Habilitar Logging SQL (Debug)
-
-Adicione ao `application.yml` ou crie `application-local.yml`:
-
-```yaml
-spring:
-  jpa:
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-
-logging:
-  level:
-    org.hibernate.SQL: DEBUG
-    org.hibernate.type.descriptor.sql: TRACE
-```
-
-Ative o profile local:
-```bash
-./mvnw spring-boot:run -Dspring-boot.run.profiles=local
-```
-
----
-
-## Acessos Locais
-
-| Recurso | URL |
-|---|---|
-| API Base | `http://localhost:8080` |
-| Swagger UI | `http://localhost:8080/swagger-ui/index.html` |
-| OpenAPI JSON | `http://localhost:8080/v3/api-docs` |
-| PostgreSQL | `localhost:5432` (workshop / user / password) |
-
----
-
-## Conectar ao Banco Localmente
+Rode o serviço que você está mexendo com `./mvnw spring-boot:run` (ou pela IDE, classe
+`*Application`). Os defaults do `application.yml` já apontam para a infra local
+(`localhost:1543x`, `localhost:27017`); só a mensageria precisa ser ligada:
 
 ```bash
-# Via psql dentro do container
-docker compose exec postgres psql -U user -d workshop
-
-# Via cliente externo (DBeaver, DataGrip, etc.)
-Host: localhost
-Port: 5432
-Database: workshop
-User: user
-Password: password
+MESSAGING_ENABLED=true AWS_ENDPOINT=http://localhost:4566 \
+AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test \
+EXECUTION_EVENTS_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:workbench-execution-events \
+EXECUTION_COMMANDS_QUEUE_URL=http://localhost:4566/000000000000/workbench-execution-commands-queue \
+SERVER_PORT=8083 ./mvnw spring-boot:run
 ```
+As variáveis de cada serviço estão no `SAGA-E2E-LOCAL.md` (Passo 3) e em
+[[Variaveis de Ambiente]].
 
----
+> [!tip] Misturar os dois
+> Dá para deixar o compose com `--profile app` no ar e parar só o serviço que vai depurar
+> (`docker compose … stop billing-service`), subindo-o pela IDE na mesma porta (8082).
+> Use as URLs `localhost` em vez dos nomes dos containers.
 
-## Dados de Teste Pré-carregados
+## Banco
 
-O `init.sh` popula o banco automaticamente. Se precisar recriar:
-
-```bash
-# Destrói o volume e recria
-docker compose down -v
-docker compose up -d postgres
-```
-
-Veja os dados disponíveis em: [[Credenciais e Seeds]]
-
----
+- **Postgres:** o Flyway aplica as migrations (`src/main/resources/db/migration`) no start.
+  Cliente SQL: `localhost:15432` (os), `15433` (billing), `15434` (customer), usuário `dbadmin`.
+- **MongoDB:** `mongodb://localhost:27017/execution`; índices criados no start
+  (`auto-index-creation`).
 
 ## Links Relacionados
 - [[Quickstart]]
 - [[Variaveis de Ambiente]]
-- [[Configuracao Docker]]
-- [[Credenciais e Seeds]]
+- [[Rodando Testes]]

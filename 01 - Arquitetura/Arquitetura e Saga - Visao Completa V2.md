@@ -214,7 +214,7 @@ seguiu a natureza do dado, não a obrigatoriedade:
 | Execution | **MongoDB** | Estoque/produtos têm **esquema flexível** (atributos variáveis por tipo de peça) e alto volume de leitura/escrita de reservas; o modelo de **documento** encaixa melhor e escala horizontalmente. Além disso, usa transação multi-documento (replica set) onde precisa de atomicidade. |
 
 Resultado: **3 PostgreSQL + 1 MongoDB** — cumpre SQL + NoSQL com justificativa técnica,
-e cada serviço é **dono exclusivo** do seu banco (nenhum acesso cruzado — ADR-0003).
+e cada serviço é **dono exclusivo** do seu banco (nenhum acesso cruzado — ADR-0006).
 
 ---
 

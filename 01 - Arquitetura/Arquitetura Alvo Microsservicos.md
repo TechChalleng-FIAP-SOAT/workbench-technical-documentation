@@ -12,7 +12,7 @@ tags:
 Refatoração do monólito **workbench-monolith** para 4 microsserviços independentes com
 banco próprio, mensageria assíncrona (SNS/SQS) e Saga orquestrada.
 
-> Decisão formalizada em `workbench-monolith/docs/adr/ADR-0003-arquitetura-microsservicos-fase4.md`.
+> Decisão formalizada em `workbench-monolith/docs/adr/ADR-0006-arquitetura-microsservicos-fase4.md`.
 
 ## Serviços
 

@@ -28,8 +28,12 @@ As collections usam variáveis de collection (edite em **Variables**):
   `JWT_SECRET` compartilhado e cole aqui.
 - `baseUrl` (nas collections por serviço) — default `http://localhost:8080`.
 - `customerUrl`, `osUrl`, `billingUrl`, `executionUrl` (na collection unificada) —
-  um host/porta por serviço, pois no cluster cada serviço é exposto separadamente
-  (ou via `kubectl port-forward` em portas distintas localmente).
+  um host/porta por serviço. Como o gateway roteia cada prefixo ao serviço dono, dá
+  para apontar **as quatro para o gateway**:
+  - local (`docker compose -f workbench-messaging/docker-compose.dev.yml --profile app up -d --build`):
+    `http://localhost:8000` — ou direto nos serviços: os `:8080`, customer `:8081`,
+    billing `:8082`, execution `:8083`;
+  - AWS: a `invoke_url` do `workbench-gateway` (mesma do `gatewayUrl`).
 
 ### Gerar um token de dev (JWT HS256)
 

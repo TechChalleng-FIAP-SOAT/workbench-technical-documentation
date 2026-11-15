@@ -333,6 +333,6 @@ estruturados** (JSON) para rastrear um fluxo entre os serviços.
 
 ## 12. Referências (ADRs)
 
-- **ADR-0003** — divisão em microsserviços + escolha da Saga orquestrada.
+- **ADR-0006** — divisão em microsserviços + escolha da Saga orquestrada.
 - **ADR-0005** — fluxo da OS, estoque (reserva/baixa/retorno), pagamento e compensação.
 - Localização: `workbench-monolith/docs/adr/`.

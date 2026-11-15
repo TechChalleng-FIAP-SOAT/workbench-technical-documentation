@@ -1,137 +1,47 @@
 ---
 title: Domínio DDD
 tags:
-  - regras-negocio
+  - regras
   - ddd
-  - domain
-  - arquitetura
+  - dominio
 aliases:
-  - Domain Model
   - DDD
+  - Agregados
 ---
 
 # Domínio DDD
 
-## Aggregate Roots
+Os bounded contexts do Event Storming viraram os limites dos microsserviços.
 
-### Client (Aggregate Root)
-
-Invariantes do domínio aplicadas no construtor:
-- Nome é obrigatório
-- CPF é validado e imutável após criação
-- Email e telefone são opcionais mas validados
-
-```java
-// Criação (novo cliente)
-Client.create(name, cpf, email, phone)
-
-// Reconstituição (carga do banco)
-Client.reconstitute(id, name, cpf, email, phone, active, createdAt)
-```
-
-> [!info] Por que dois métodos de criação?
-> `create()` garante invariantes e gera UUID. `reconstitute()` aceita dados já validados vindos do banco, sem re-validar. Separar os dois previne bugs onde a reconstituição dispara regras de negócio que não se aplicam a dados persistidos.
-
-### Stock (Aggregate Root)
-
-Controla quantidade disponível e previne negatividade:
-
-```java
-stock.addQuantity(10)          // entrada
-stock.removeQuantity(5)        // saída (lança exceção se insuficiente)
-stock.reserve(3, osId)         // reserva (lança exceção se disponível < 3)
-stock.availableQuantity()      // quantity - reservedQuantity
-stock.isLowStock()             // availableQuantity <= minimumQuantity
-```
-
-## Value Objects
-
-### Cpf
-
-Valida o CPF (formato e dígitos verificadores). Aceita com ou sem formatação:
-
-```java
-new Cpf("529.982.247-25")   // válido
-new Cpf("52998224725")      // válido (sem formatação)
-new Cpf("111.111.111-11")   // lança InvalidCpfException
-```
-
-## Entities
-
-### ServiceOrder
-
-Entidade com máquina de estados explícita:
-
-```java
-enum ServiceOrderStatus {
-    RECEBIDA, EM_DIAGNOSTICO, AGUARDANDO_APROVACAO,
-    APROVADO, FINALIZADA, ENTREGUE
-}
-```
-
-### StockReservation
-
-Rastreia reservas vinculadas a uma OS:
-
-```java
-enum ReservationStatus { ACTIVE, CONFIRMED, RELEASED }
-```
-
-### StockMovement
-
-Log imutável de todas as movimentações de estoque. Nunca é deletado.
-
-## Domain Events
-
-| Evento | Publicado por | Ouvido por | Efeito |
+| Contexto (serviço) | Agregado | Entidades / VOs | Invariantes principais |
 |---|---|---|---|
-| `ReservationChangedEvent` | StockHandler | BudgetHandler | Recalcula orçamento da OS |
+| **Ordem de Serviço** (os) | `ServiceOrder` | `WorkshopService` (serviço da OS), `Status` | transições do [[Ciclo de Vida da OS]]; documento normalizado; FINALIZADA só com serviços DONE |
+| | `ServiceType` | — | nome normalizado, único e imutável; MO ≥ 0 |
+| | `SagaState` | `SagaStep` | passo esperado por evento; só recomeça depois de `FALHOU` |
+| **Cliente** (customer) | `Client` | `Document` (`Cpf`/`Cnpj`) | dígitos verificadores; documento único |
+| | `Vehicle` | `LicensePlate`, `VehicleType` | placa antiga ou Mercosul; vinculado a um cliente |
+| | `User` | `Role` | e-mail único; senha BCrypt; bloqueio após 5 erros |
+| **Faturamento** (billing) | `Budget` | `BudgetItem` (PART/SUPPLY/LABOR) | um por OS; totais derivados dos itens |
+| | `Payment` | `PaymentHistory`, `PaymentStatus` | valor > 0; transições PENDENTE → APROVADO/RECUSADO → ESTORNADO |
+| **Execução** (execution) | `Product` | `ProductType`, `UnitOfMeasure` | SKU único; preço ≥ 0 |
+| | `Stock` | `StockMovement`, `StockReservation` | disponível = quantidade − reservado; reserva tudo ou nada |
 
-```java
-// Publicação
-applicationEventPublisher.publishEvent(
-    new ReservationChangedEvent(serviceOrderId)
-);
+## Linguagem ubíqua
 
-// Listener
-@EventListener
-public void handle(ReservationChangedEvent event) {
-    budgetRecalculateHandler.handle(event.serviceOrderId());
-}
-```
+| Termo | Significado |
+|---|---|
+| OS | Ordem de serviço de um veículo de um cliente |
+| Tipo de serviço | Item do catálogo (ex.: `TROCA_OLEO`) com MO padrão |
+| Serviço da OS | Instância do tipo dentro de uma OS, com status próprio |
+| Diagnóstico | Peças e MO definidas pelo mecânico; dispara a Saga |
+| Reserva / baixa / liberação | Estoque separado, consumido ou devolvido |
+| Orçamento | Peças + MO, aprovado ou recusado pelo cliente |
+| Cobrança | Pagamento no Mercado Pago, referência `<OS>` ou `<OS>-N` |
 
-## Repository Pattern (Ports & Adapters)
-
-O domínio define **interfaces** (ports). A infraestrutura fornece **implementações** (adapters):
-
-```java
-// Port (domínio — sem dependência de Spring/JPA)
-public interface ClientRepository {
-    Optional<Client> findById(UUID id);
-    Optional<Client> findByCpf(Cpf cpf);
-    Client save(Client client);
-    List<Client> findAll();
-}
-
-// Adapter (infra — depende de Spring Data JPA)
-@Repository
-public class ClientJpaRepository implements ClientRepository {
-    private final ClientJpaRepositoryInterface jpa;
-    private final ClientMapper mapper;
-    // ...
-}
-```
-
-## Soft Delete
-
-Entidades com soft delete (`Client`, `Vehicle`, `Part`, `Supply`) nunca são removidas do banco:
-
-- Flag `active = false` indica registro inativo
-- Queries sempre incluem `WHERE active = true`
-- Histórico preservado para auditoria
+Agregados não têm setters: o estado muda por métodos de negócio e fábricas
+([[Padroes de Projeto]]).
 
 ## Links Relacionados
-- [[Padroes de Projeto]]
-- [[Reserva de Estoque]]
 - [[Ciclo de Vida da OS]]
-- [[Estrutura de Pastas]]
+- [[Reserva de Estoque]]
+- [[Orcamento]]

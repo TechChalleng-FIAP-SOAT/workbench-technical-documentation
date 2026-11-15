@@ -1,87 +1,49 @@
 ---
-title: Ciclo de Vida da Ordem de Serviço
+title: Ciclo de Vida da OS
 tags:
-  - regras-negocio
-  - service-order
-  - workflow
+  - regras
+  - os
+  - status
 aliases:
-  - OS Status
+  - Status da OS
   - Fluxo da OS
 ---
 
-# Ciclo de Vida da Ordem de Serviço
-
-## Estados da OS
+# Ciclo de Vida da OS
 
 ```mermaid
 stateDiagram-v2
     [*] --> RECEBIDA: POST /order
-    RECEBIDA --> EM_DIAGNOSTICO: Técnico inicia diagnóstico
-    EM_DIAGNOSTICO --> AGUARDANDO_APROVACAO: Orçamento gerado
-    AGUARDANDO_APROVACAO --> APROVADO: Cliente aprova
-    APROVADO --> FINALIZADA: Todos serviços DONE
-    FINALIZADA --> ENTREGUE: Veículo entregue
-    AGUARDANDO_APROVACAO --> RECEBIDA: Cliente recusa (volta para diagnóstico)
+    RECEBIDA --> EM_DIAGNOSTICO: POST /diagnosis (inicia a Saga)
+    EM_DIAGNOSTICO --> AGUARDANDO_APROVACAO: Saga — estoque reservado + orçamento gerado
+    AGUARDANDO_APROVACAO --> APROVADO: decision APPROVED (baixa de estoque)
+    AGUARDANDO_APROVACAO --> RECUSADA: decision REJECTED (libera estoque)
+    RECUSADA --> EM_DIAGNOSTICO: novo diagnóstico
+    APROVADO --> EM_EXECUCAO: PATCH /order/{id}
+    EM_EXECUCAO --> FINALIZADA: último serviço DONE
+    FINALIZADA --> PAGAMENTO_PENDENTE: PATCH (Saga cria a cobrança)
+    PAGAMENTO_PENDENTE --> PAGO: pagamento confirmado
+    PAGO --> ENTREGUE: Saga
+    ENTREGUE --> [*]
 ```
 
-## Descrição de Cada Estado
+## Regras
 
-| Estado | Descrição | Quem age |
-|---|---|---|
-| `RECEBIDA` | OS criada com lista de serviços solicitados | Sistema / Atendente |
-| `EM_DIAGNOSTICO` | Técnico avalia o veículo e reserva peças/insumos | Técnico |
-| `AGUARDANDO_APROVACAO` | Orçamento calculado automaticamente; aguarda aprovação do cliente | Cliente |
-| `APROVADO` | Cliente aprovou o orçamento; execução dos serviços começa | Cliente |
-| `FINALIZADA` | Todos os serviços estão com status `DONE`; reservas confirmadas | Técnico |
-| `ENTREGUE` | Veículo entregue ao cliente; OS encerrada | Atendente |
+- Só a próxima transição do diagrama é aceita; qualquer outra → **422**.
+- `AGUARDANDO_APROVACAO`, `APROVADO`, `RECUSADA`, `PAGO` e `ENTREGUE` são decididos pela
+  **Saga**: numa OS com Saga, pedi-los no `PATCH /order/{id}` → **409**.
+- **Serviços da OS:** cada um anda `TO_DO → DOING → DONE` (`PATCH /order/{id}/services/{sid}/status`),
+  só com a OS em `EM_EXECUCAO`. O último `DONE` leva a OS para `FINALIZADA`; `FINALIZADA`
+  manual com serviço pendente → **409**.
+- **Falta de estoque no diagnóstico:** a Saga vai para `FALHOU` e a OS fica em
+  `EM_DIAGNOSTICO`; o motivo está em `GET /order/{id}/saga` e um novo diagnóstico recomeça a Saga.
+- **Pagamento recusado:** a OS segue em `PAGAMENTO_PENDENTE`; `POST /order/{id}/payment-retry`
+  gera nova cobrança.
+- Cada mudança de status notifica o cliente por e-mail (tópico SNS de notificações) e registra
+  o tempo no status (métrica no Datadog).
 
-## Status dos Serviços Internos
-
-Cada serviço dentro da OS tem seu próprio ciclo:
-
-```mermaid
-stateDiagram-v2
-    [*] --> TO_DO: Serviço criado
-    TO_DO --> DOING: Técnico inicia
-    DOING --> DONE: Técnico conclui
-```
-
-> [!warning] Regra de Finalização
-> A OS só pode transitar para `FINALIZADA` quando **todos** os serviços internos estiverem com status `DONE`.
-
-## Fluxo Completo — Exemplo Prático
-
-```mermaid
-sequenceDiagram
-    actor Cliente
-    actor Atendente
-    actor Técnico
-
-    Atendente->>API: POST /order (RECEBIDA)
-    Técnico->>API: PATCH /order/{id} → EM_DIAGNOSTICO
-    Técnico->>API: POST /api/stocks/reservations (reserva peças)
-    Note over API: Budget gerado automaticamente
-    Técnico->>API: PATCH /order/{id} → AGUARDANDO_APROVACAO
-    Cliente->>API: GET /api/clients/my-orders/{id} (vê orçamento)
-    Cliente->>API: PATCH /api/clients/my-orders/{id}/approve
-    Note over API: Status → APROVADO
-    Técnico->>API: PATCH /services/update-status (TO_DO → DOING → DONE)
-    Técnico->>API: PATCH /order/{id} → FINALIZADA
-    Note over API: Reservas confirmadas; estoque debitado
-    Atendente->>API: PATCH /order/{id} → ENTREGUE
-```
-
-## Regras de Transição
-
-> [!danger] Transições Inválidas
-> O sistema bloqueia transições que não seguem o fluxo definido. Tentar avançar um estado fora de sequência retorna erro de validação.
-
-> [!info] Rejeição pelo Cliente
-> Se o cliente rejeitar o orçamento, a OS pode retornar a `RECEBIDA` para novo diagnóstico. As reservas de estoque são **liberadas** automaticamente (`RELEASED`).
+Rotas: [[API - Ordens de Servico]] · [[API - Servicos]] · Saga: [[Arquitetura e Saga - Visao Completa V2]].
 
 ## Links Relacionados
 - [[Reserva de Estoque]]
 - [[Orcamento]]
-- [[API - Ordens de Servico]]
-- [[API - Servicos]]
-- [[API - Clientes]]

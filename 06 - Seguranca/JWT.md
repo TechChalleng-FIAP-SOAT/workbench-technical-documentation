@@ -1,188 +1,55 @@
 ---
-title: JWT — Autenticação por Token
+title: JWT — Autenticação
 tags:
   - seguranca
   - jwt
-  - autenticacao
 aliases:
-  - JSON Web Token
-  - Token JWT
+  - Token
 ---
 
-# JWT — Autenticação por Token
+# JWT — Autenticação
 
-## Visão Geral
+**Quem emite:** só a `workbench-lambda` (`POST /auth` para cliente por CPF, `POST /auth/login`
+para staff). **Quem valida:** a Lambda authorizer no API Gateway e, de novo, cada
+microsserviço (`JwtFilter`). Todos usam HS256 com o **mesmo `JWT_SECRET`**.
 
-O sistema usa **JWT (JSON Web Token)** com algoritmo **HS256** para autenticação stateless. Não há sessão no servidor — cada requisição carrega o token com todas as informações necessárias.
+| Token | `sub` | Claims | Authority no serviço |
+|---|---|---|---|
+| Cliente | CPF/CNPJ | `clientId`, `roles: ["CLIENT"]` | `ROLE_CLIENT` |
+| Staff | e-mail | `roles: ["ADMIN"]` ou `["TECHNICIAN"]`, sem `clientId` | `ROLE_ADMIN` / `ROLE_TECHNICIAN` |
+| Serviço (os → customer) | `os-service` | `roles: ["ADMIN","TECHNICIAN"]`, 1 min | gerado pelo `ServiceTokenProvider` |
 
----
+## Validação nos serviços (`JwtFilter`)
 
-## Geração do Token (`JwtService.java`)
+1. Lê `Authorization: Bearer <token>`.
+2. Confere assinatura e expiração (`JwtService.tryParseClaims` / `isExpired`).
+3. Token com `clientId` → `ROLE_CLIENT`; senão, as `roles` da claim viram `ROLE_*`.
+4. Token ausente ou inválido não autentica: a rota protegida responde **401 em JSON**
+   (`JsonSecurityErrorHandler`). Perfil sem permissão → **403 em JSON**.
 
-```java
-public String generateToken(User user) {
-    long now = System.currentTimeMillis();
-    return Jwts.builder()
-        .subject(user.getEmail())                           // sub: email do usuário
-        .claim("userId", user.getId().toString())           // claim customizado
-        .claim("roles", user.getRoles().stream()
-            .map(Role::getName).toList())                   // claim de roles
-        .issuedAt(new Date(now))                            // iat: emissão
-        .expiration(new Date(now + props.getExpiration()))  // exp: expiração
-        .signWith(key)                                      // assina com HS256
-        .compact();
-}
-```
+O dono do recurso (cliente só vê a própria OS, orçamento, cadastro…) é conferido nos casos de
+uso via `Requester`, não só pela role. Expiração: definida na Lambda (`JWT_EXPIRATION`,
+padrão 24 h); os serviços não emitem token e não têm essa variável.
 
-### Chave de Assinatura
+## Gerar um token de dev
 
-```java
-// Derivada do secret via HMAC-SHA256
-SecretKey key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
-```
-
----
-
-## Claims do Token
-
-| Claim | Tipo | Descrição |
-|---|---|---|
-| `sub` | String | Email do usuário autenticado |
-| `userId` | String (UUID) | ID único do usuário |
-| `roles` | Array | Lista de roles (`["ROLE_ADMIN", "ROLE_USER"]`) |
-| `iat` | Long | Timestamp de emissão (Unix) |
-| `exp` | Long | Timestamp de expiração (Unix) |
-
-**Exemplo de payload decodificado:**
-```json
-{
-  "sub": "superadmin@system.com",
-  "userId": "550e8400-e29b-41d4-a716-446655440000",
-  "roles": ["ROLE_ADMIN", "ROLE_USER", "ROLE_TECHNICIAN"],
-  "iat": 1705312800,
-  "exp": 1705399200
-}
-```
-
----
-
-## Validação do Token (`JwtFilter.java`)
-
-O `JwtFilter` intercepta **todas** as requisições (exceto endpoints públicos):
-
-```java
-@Component
-public class JwtFilter extends OncePerRequestFilter {
-
-    @Override
-    protected void doFilterInternal(HttpServletRequest request, ...) {
-        // 1. Extrai o header Authorization
-        String header = request.getHeader("Authorization");
-        if (header == null || !header.startsWith("Bearer ")) {
-            filterChain.doFilter(request, response);
-            return;
-        }
-
-        // 2. Extrai o token
-        String token = header.substring(7);
-
-        // 3. Valida assinatura e expiração
-        Claims claims = jwtService.extractClaims(token);
-
-        // 4. Define o contexto de segurança
-        UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(
-            claims.getSubject(), null, authorities
-        );
-        SecurityContextHolder.getContext().setAuthentication(auth);
-
-        filterChain.doFilter(request, response);
-    }
-}
-```
-
----
-
-## Configuração (`JwtProperties.java`)
-
-```java
-@ConfigurationProperties(prefix = "jwt")
-public record JwtProperties(
-    String secret,       // JWT_SECRET env var
-    long expiration      // JWT_EXPIRATION env var (padrão: 86400000ms = 24h)
-) {}
-```
-
-**Valores configurados via variáveis de ambiente:**
-```yaml
-jwt:
-  secret: ${JWT_SECRET:akmsdkmasfnjsgknakmsdkmasdkmsadfkmdsakmdkmsadsa}
-  expiration: ${JWT_EXPIRATION:86400000}
-```
-
----
-
-## Gerenciamento de Sessão
-
-```java
-// SecurityConfig.java
-.sessionManagement(session ->
-    session.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-)
-```
-
-> [!info] Stateless
-> Nenhuma sessão é criada no servidor. Cada requisição é autenticada independentemente pelo token JWT. Isso permite escalabilidade horizontal sem necessidade de session store compartilhado.
-
----
-
-## Como Usar o Token
-
-### Via curl
-```bash
-# 1. Login
-TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"superadmin@system.com","password":"coxinha123"}' \
-  | jq -r '.token')
-
-# 2. Usar nas requisições
-curl -H "Authorization: Bearer $TOKEN" \
-     http://localhost:8080/api/clients
-```
-
-### Via Swagger UI
-1. Acesse `http://localhost:8080/swagger-ui/index.html`
-2. Clique em **Authorize** (cadeado)
-3. Cole o token no campo `Bearer Token`
-4. Todas as requisições do Swagger incluirão o token automaticamente
-
----
-
-## Segurança do JWT_SECRET
-
-> [!danger] Segredo Padrão é Público
-> O segredo padrão no código-fonte é conhecido publicamente. **Sempre** substitua via variável de ambiente em qualquer ambiente além do desenvolvimento local.
-
-**Requisito mínimo:** 256 bits (32 bytes) para algoritmo HS256.
+Local não há Lambda. Com o `JWT_SECRET` de dev:
 
 ```bash
-# Gerar segredo seguro
-openssl rand -base64 64
+python3 - <<'PY'
+import base64,hashlib,hmac,json,time
+b=lambda x: base64.urlsafe_b64encode(x).rstrip(b'=').decode()
+n=int(time.time()); h=b(json.dumps({"alg":"HS256","typ":"JWT"}).encode())
+p=b(json.dumps({"sub":"admin@workbench.dev","roles":["ADMIN"],"iat":n,"exp":n+86400}).encode())
+s=b(hmac.new(b"akmsdkmasfnjsgknakmsdkmasdkmsadfkmdsakmdkmsadsa",f"{h}.{p}".encode(),hashlib.sha256).digest())
+print(f"{h}.{p}.{s}")
+PY
 ```
+Token de cliente: troque o payload por `{"sub":"52998224725","clientId":1,"roles":["CLIENT"],...}`.
 
----
-
-## Erros Comuns
-
-| Código | Motivo |
-|---|---|
-| 401 | Token ausente, inválido ou expirado |
-| 403 | Token válido mas role insuficiente |
-
----
+> [!warning] Na AWS o `JWT_SECRET` vem dos GitHub Secrets (nunca o default de dev).
 
 ## Links Relacionados
-- [[Autorizacao e Roles]]
 - [[Spring Security Config]]
 - [[API - Autenticacao]]
 - [[Variaveis de Ambiente]]

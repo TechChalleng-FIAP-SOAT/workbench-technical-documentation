@@ -1,146 +1,55 @@
 ---
-title: Configuração — Ambiente Docker
+title: Configuração Docker
 tags:
   - ambientes
   - docker
-  - configuracao
 aliases:
-  - Docker Environment
-  - Container
+  - Dockerfile
+  - Imagens
 ---
 
-# Configuração — Ambiente Docker
+# Configuração Docker
 
-## Topologia (Tudo em Container)
+## Dockerfile (igual nos 4 serviços)
 
-```
-Docker Network: workbench-monolith_default
-├── postgres        (postgres:16)         → porta 5432 (interna)
-├── app             (build local)         → porta 8080 (exposta)
-├── validation      (curl)                → sem porta exposta
-├── sonarqube_db    (postgres:16)         → sem porta exposta (interna)
-├── sonarqube       (sonarqube:community) → porta 9000 (exposta)
-└── zap             (zaproxy/zap-stable)  → sem porta exposta
-```
+```dockerfile
+FROM maven:3.9.9-eclipse-temurin-21-alpine AS build
+WORKDIR /app
+COPY . .
+RUN mvn clean package -DskipTests
 
----
-
-## Habilitar o Serviço `app` no Docker
-
-Por padrão o serviço `app` está comentado no `docker-compose.yml`. Para rodar tudo em Docker:
-
-1. Descomente o serviço `app` no `docker-compose.yml`
-2. Execute:
-```bash
-docker compose up -d --build
+FROM amazoncorretto:21-alpine
+WORKDIR /app
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+COPY --from=build /app/target/*.jar app.jar
+RUN chown -R appuser:appgroup /app
+USER appuser
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
 ```
 
-> [!warning] Rebuild Necessário
-> Toda alteração no código requer rebuild da imagem: `docker compose build app`. Por isso o padrão é rodar a aplicação localmente.
+- **Multi-stage:** o JDK e o Maven ficam só no estágio de build; a imagem final tem só o JRE.
+- **Usuário sem privilégio** (`appuser`).
+- `.dockerignore` tira `target/`, `.git/` e arquivos de IDE do contexto.
+- Imagem base escaneada com Trivy, sem vulnerabilidades HIGH/CRITICAL de SO —
+  [[Relatorio de Vulnerabilidades - Fase 4]].
 
----
+## Onde as imagens são usadas
 
-## Comunicação Entre Serviços
-
-Em Docker Compose, use o **nome do serviço** como hostname:
-
-| De → Para | URL |
-|---|---|
-| `app` → `postgres` | `jdbc:postgresql://postgres:5432/workshop` |
-| `validation` → `app` | `http://app:8080` |
-| `zap` → `app` | `http://app:8080` |
-
-> [!danger] Não use `localhost` em Docker Compose
-> `localhost` dentro de um container se refere ao próprio container, não à máquina host. Use o nome do serviço do Docker Compose.
-
----
-
-## Variáveis de Ambiente no Docker Compose
-
-```yaml
-services:
-  app:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      DB_URL: jdbc:postgresql://postgres:5432/workshop
-      DB_USERNAME: user
-      DB_PASSWORD: password
-      JWT_SECRET: meu-segredo-seguro-aqui
-      JWT_EXPIRATION: 86400000
-    depends_on:
-      postgres:
-        condition: service_healthy
-```
-
----
-
-## Health Check do PostgreSQL
-
-O serviço `app` só sobe após o banco estar saudável:
-
-```yaml
-postgres:
-  image: postgres:16
-  healthcheck:
-    test: ["CMD-SHELL", "pg_isready -U user -d workshop"]
-    interval: 5s
-    timeout: 5s
-    retries: 10
-```
-
----
-
-## Persistência de Dados
-
-O PostgreSQL usa um volume Docker para persistir dados entre restarts:
-
-```yaml
-volumes:
-  postgres_data:
-
-services:
-  postgres:
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./init.sh:/docker-entrypoint-initdb.d/init.sh
-```
-
-> [!info] init.sh
-> O `init.sh` só é executado quando o volume está vazio (primeira criação). Para forçar re-execução: `docker compose down -v`.
-
----
-
-## Logs dos Serviços
-
-```bash
-# Todos os serviços
-docker compose logs
-
-# Serviço específico em tempo real
-docker compose logs -f app
-docker compose logs -f postgres
-docker compose logs -f sonarqube
-docker compose logs -f zap
-```
-
----
-
-## Troubleshooting
-
-| Problema | Causa | Solução |
+| Ambiente | Build | Execução |
 |---|---|---|
-| App não conecta no banco | Banco ainda iniciando | Aguardar health check passar |
-| `Connection refused :5432` | Container postgres não está rodando | `docker compose up -d postgres` |
-| SonarQube sem memória | RAM insuficiente | Subir apenas postgres + app |
-| Porta 8080 em uso | Outro processo usando a porta | Mudar `SERVER_PORT` ou matar o processo |
+| Local | `docker compose … --profile app up --build` | [[Docker Compose]] |
+| AWS | job `docker-build-push` do pipeline → **ECR** | EKS (`k8s/app.yaml` de cada serviço, com HPA e probes) |
 
----
+## Configuração no container
+
+Tudo por variável de ambiente ([[Variaveis de Ambiente]]): no compose ficam no próprio
+`docker-compose.dev.yml` (com âncoras YAML para JWT e mensageria); no EKS, no
+`k8s/configmap.yaml` + Secret de cada serviço.
+
+Healthcheck: `GET /actuator/health` (compose) e `/actuator/health/readiness|liveness`
+(Kubernetes).
 
 ## Links Relacionados
 - [[Docker Compose]]
 - [[Variaveis de Ambiente]]
-- [[Configuracao Local]]
-- [[SonarQube]]
-- [[OWASP ZAP]]

@@ -1,77 +1,50 @@
 ---
-title: Tecnologias e Stack
+title: Tecnologias
 tags:
   - arquitetura
-  - tecnologias
   - stack
+aliases:
+  - Stack
 ---
 
-# Tecnologias e Stack
+# Tecnologias
 
-## Stack Principal
+## Serviços (os, customer, billing, execution)
 
-| Componente | Tecnologia | Versão | Finalidade |
-|---|---|---|---|
-| Linguagem | Java | 21 LTS | Linguagem principal |
-| Framework | Spring Boot | 4.0.5 | Web framework e injeção de dependência |
-| Segurança | Spring Security | (Boot managed) | Autenticação e autorização |
-| ORM | Hibernate / JPA | (Boot managed) | Persistência de dados |
-| Banco de Dados | PostgreSQL | 16 | Banco relacional |
-| Queries | Spring Data JPA | (Boot managed) | Derived queries + JPQL |
-| Documentação REST | SpringDoc OpenAPI | 3.0.2 | Swagger UI + OpenAPI spec |
-| Mapeamento | MapStruct | 1.6.3 | DTO ↔ Entity mapping |
-| Utilitários | Lombok | (Boot managed) | Redução de boilerplate |
-| JWT | jjwt | 0.13.0 | Geração e validação de tokens |
-| Build | Maven | 3.9.9 | Gerenciamento de dependências e build |
-| Container | Docker | Latest | Containerização |
-| Orquestração | Docker Compose | Latest | Multi-container |
-
-## Stack de Testes
-
-| Componente | Tecnologia | Versão | Finalidade |
-|---|---|---|---|
-| Framework de Teste | JUnit 5 | (Boot managed) | Testes unitários |
-| Mocks | Mockito | (Boot managed) | Mocking em testes |
-| Containers de Teste | Testcontainers | 1.20.4 | PostgreSQL real em testes de integração |
-| Cobertura | JaCoCo | 0.8.14 | Relatórios de cobertura de código |
-
-## Stack de Qualidade e Segurança
-
-| Componente | Tecnologia | Finalidade |
+| Tecnologia | Versão | Uso |
 |---|---|---|
-| Análise Estática | SonarQube Community | Qualidade, bugs, code smells |
-| Cobertura → Sonar | JaCoCo XML Report | Feed de cobertura para SonarQube |
-| Scan de Segurança | OWASP ZAP | DAST — testa API em execução |
+| Java | 21 | Linguagem |
+| Spring Boot | **4.0.9** (Spring 7.0, Spring Security 7.0) | Web, segurança, actuator, validação |
+| PostgreSQL + Flyway | 16 | os, billing, customer (migrations versionadas) |
+| MongoDB + Spring Data MongoDB | 7 (Atlas na AWS) | execution, com transações multidocumento (replica set) |
+| AWS SDK v2 (SNS/SQS) | 2.29.1 | Mensageria da Saga |
+| JJWT | 0.13.0 | Validação do JWT |
+| springdoc-openapi | 3.0.2 | Swagger UI e `/v3/api-docs` |
+| ShedLock | 5.16.0 | Jobs agendados únicos entre réplicas (os, billing) |
+| logstash-logback-encoder | 8.1 | Logs JSON (Datadog) |
+| Micrometer + Datadog | — | Métricas |
+| MapStruct | 1.6.3 | Mapeamento (os-service) |
+| Lombok | — | Boilerplate |
 
-## Por Que PostgreSQL?
+## Testes e qualidade
 
-> [!info] Justificativa da escolha
-> - **JOINs:** Relacionamentos complexos entre OS, serviços, estoque e clientes
-> - **Integridade Referencial:** Foreign keys previnem registros órfãos
-> - **Transações ACID:** Crítico para reservas atômicas de estoque
-> - **Schema Estruturado:** Entidades fixas bem definidas pelo domínio
-> - **Queries Complexas:** Agregações para relatórios de monitoramento
+JUnit 5, Mockito, Testcontainers 1.20.4 (Postgres/Mongo), Cucumber 7.20.1 (BDD no os),
+JaCoCo 0.8.14 (gate 80%), SonarCloud, OWASP ZAP (DAST), Trivy (SCA).
 
-## Diagrama de Dependências
+## Infra
 
-```mermaid
-graph TD
-    SB[Spring Boot 4.0.5] --> SS[Spring Security]
-    SB --> SDA[Spring Data JPA]
-    SB --> WEB[Spring Web MVC]
-    SS --> JWT[jjwt 0.13.0]
-    SDA --> HB[Hibernate]
-    HB --> PG[PostgreSQL 16]
-    WEB --> OA[SpringDoc OpenAPI 3.0.2]
-    MS[MapStruct 1.6.3] --> SB
-    LK[Lombok] --> SB
-    TC[Testcontainers 1.20.4] --> PG
-    JC[JaCoCo 0.8.14] --> SQ[SonarQube]
-    ZAP[OWASP ZAP] --> WEB
-```
+| Peça | Tecnologia |
+|---|---|
+| Containers | Docker (multi-stage, `amazoncorretto:21-alpine`) |
+| Orquestração | Kubernetes (EKS) com HPA |
+| IaC | Terraform (repositórios `workbench-k8s-terraform`, `-database`, `-messaging`, `-gateway`, `-lambda`) |
+| Entrada | AWS API Gateway (REST) + Lambdas Java 21 |
+| Mensageria | SNS (fan-out) + SQS (uma fila por consumidor) + DLQ |
+| Local | Docker Compose + LocalStack + nginx (gateway local) |
+| CI/CD | GitHub Actions (branch protection na `main`) |
+| Observabilidade | Datadog (logs, métricas, dashboards, monitores) |
+| Pagamento | Mercado Pago Checkout Pro |
 
 ## Links Relacionados
 - [[Visao Geral]]
-- [[JWT]]
-- [[SonarQube]]
-- [[OWASP ZAP]]
+- [[Requisitos]]

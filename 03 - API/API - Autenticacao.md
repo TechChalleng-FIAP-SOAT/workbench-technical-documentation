@@ -4,93 +4,82 @@ tags:
   - api
   - autenticacao
   - jwt
+  - lambda
 aliases:
   - Login
-  - Signup
+  - Auth
 ---
 
 # API — Autenticação
 
-> [!info] Endpoints Públicos
-> Estes endpoints **não requerem token JWT**. São os únicos acessíveis sem autenticação.
+**Serviço dono:** `workbench-lambda` (emissão) + Customer Service (credenciais de staff)
 
-## POST /auth/login
+> [!info] Onde chamar
+> - **AWS:** sempre pelo API Gateway — `{{gatewayUrl}}{path}`. O gateway roteia
+>   `/api/clients|vehicles|users` → Customer, `/api/budgets|payments` → Billing,
+>   `/api/products|stocks` → Execution e o resto (`/order`, `/service-types`,
+>   `/monitoring`) → OS Service.
+> - **Local:** `docker compose -f workbench-messaging/docker-compose.dev.yml --profile app up -d --build`
+>   e use o gateway local `http://localhost:8000` (mesmo roteamento) ou o serviço direto:
+>   OS `:8080`, Customer `:8081`, Billing `:8082`, Execution `:8083`.
+> - Todas as rotas abaixo exigem `Authorization: Bearer <jwt>` salvo indicação contrária.
+>   Erros seguem `{"timestamp": "...", "status": 409, "error": "mensagem em português"}`.
 
-Autentica um usuário e retorna o JWT para uso nas demais rotas.
+> [!warning] Só existe na AWS
+> O login é feito pelas Lambdas atrás do API Gateway. Localmente não há Lambda: gere um
+> JWT de dev assinado com o `JWT_SECRET` padrão (o `SAGA-E2E-LOCAL.md` traz um pronto e o
+> `workbench-messaging/zap/zap-scan.sh` mostra como assinar um).
 
-**Request Body:**
+## POST /auth — Login do cliente (CPF/CNPJ) · público
+
 ```json
-{
-  "email": "superadmin@system.com",
-  "password": "coxinha123"
-}
+{ "cpf": "529.982.247-25" }
 ```
 
-**Response 200:**
+| Status | Corpo | Quando |
+|---|---|---|
+| 200 | `{ "token": "...", "expiresIn": 86400000, "client": { "id": 1, "name": "MARIA OLIVEIRA" } }` | cliente existe e está ativo |
+| 400 | `{ "error": "Invalid CPF" }` | documento ausente ou dígitos inválidos |
+| 403 | `{ "error": "Client is inactive" }` | cliente desativado |
+| 404 | `{ "error": "Client not found" }` | documento sem cadastro |
+
+Token do cliente: `sub` = documento, claim `clientId`, `roles: ["CLIENT"]`. O cliente só
+enxerga as **próprias** OS, orçamentos, pagamentos, cadastro e veículos (dono conferido
+em cada caso de uso — `Requester`).
+
+## POST /auth/login — Login de staff (e-mail/senha) · público
+
 ```json
-{
-  "token": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzdXBlcmFkbWluQHN5c3..."
-}
+{ "email": "admin@workbench.dev", "password": "admin123" }
 ```
 
-**Erros:**
-| Código | Motivo |
-|---|---|
-| 401 | Credenciais inválidas |
-| 400 | Campos obrigatórios ausentes |
+| Status | Corpo | Quando |
+|---|---|---|
+| 200 | `{ "token": "...", "expiresIn": 86400000, "email": "...", "roles": ["ADMIN"] }` | credenciais válidas |
+| 400 | `{ "error": "Email and password are required" }` | campos ausentes |
+| 401 | `{ "error": "Invalid credentials" }` | senha errada **ou** e-mail bloqueado (5 erros seguidos → 15 min) |
 
-**Exemplo curl:**
-```bash
-curl -X POST http://localhost:8080/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"superadmin@system.com","password":"coxinha123"}'
-```
+A Lambda valida as credenciais em `POST /api/users/auth/validate` do Customer Service
+(rota interna, sem token) e emite o JWT de staff (sem `clientId`).
 
----
+## POST /api/users/signup — Cadastrar usuário staff · ADMIN
 
-## POST /signup
-
-Cria um novo usuário no sistema.
-
-> [!warning] Requer ROLE_ADMIN
-> Apesar de estar em `/signup`, este endpoint exige que o criador seja ROLE_ADMIN. Não é um cadastro público.
-
-**Request Body:**
 ```json
-{
-  "email": "tecnico@oficina.com",
-  "password": "senha123",
-  "role": "ROLE_TECHNICIAN"
-}
+{ "email": "tecnico@workbench.dev", "password": "senha-forte", "roles": ["TECHNICIAN"] }
 ```
+**201** `{ "id": 2, "email": "tecnico@workbench.dev", "roles": ["TECHNICIAN"] }` · **409** e-mail já cadastrado.
 
-**Response 201:**
-```json
-{
-  "id": "uuid-do-usuario",
-  "email": "tecnico@oficina.com",
-  "roles": ["ROLE_TECHNICIAN"]
-}
-```
+## Perfis
 
----
-
-## Como Usar o Token
-
-Após o login, inclua o token em todas as requisições:
-
-```bash
-# Substitua <TOKEN> pelo token recebido no login
-curl -H "Authorization: Bearer <TOKEN>" \
-     http://localhost:8080/api/clients
-```
-
-> [!tip] Validade do Token
-> O token expira em **24 horas** (86400000ms). Após expirar, faça login novamente.
+| Role | Quem | Pode |
+|---|---|---|
+| `ADMIN` | gestor | tudo |
+| `TECHNICIAN` | mecânico/atendente | tudo, exceto cadastrar staff |
+| `CLIENT` | dono do veículo (login por CPF) | consultar as próprias OS/orçamento/pagamento/cadastro, aprovar/recusar orçamento, refazer pagamento |
 
 ---
 
 ## Links Relacionados
 - [[JWT]]
-- [[Autorizacao e Roles]]
-- [[Credenciais e Seeds]]
+- [[Spring Security Config]]
+- [[API - Clientes]]
