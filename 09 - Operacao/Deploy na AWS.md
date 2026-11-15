@@ -293,6 +293,31 @@ O `alert_email` recebe os **alarmes das DLQs** (um alarme do CloudWatch por DLQ,
 dispara com a 1ª mensagem que cair nela). Também precisa confirmar a inscrição. O que
 fazer quando chegar um alarme está no [[Runbook]].
 
+### E-mail ao cliente pelo SES (opcional)
+
+Sem isto, o e-mail sai pelo tópico SNS e chega **só ao endereço inscrito** (`notification_email`),
+e não ao cliente. Com o SES, o os-service envia direto ao e-mail cadastrado do cliente.
+
+1. **Remetente e destinatários.** No `terraform apply` da FASE 4, acrescente:
+   ```bash
+   -var "ses_sender_email=oficina@seu-dominio.com" \
+   -var 'ses_verified_recipients=["seu-email-de-teste@exemplo.com"]'
+   ```
+   A AWS manda um e-mail de verificação para **cada** endereço; o dono precisa abrir o link. Sem
+   isso o envio é recusado.
+2. **Sandbox.** Uma conta nova do SES só envia **de remetente verificado para destinatário
+   verificado**. Por isso `ses_verified_recipients` precisa ter o e-mail **cadastrado do cliente** de teste
+   (o do Customer Service). Para mandar a qualquer cliente, peça ao SES o **acesso à produção**
+   (console do SES, solicitação manual).
+3. **Ligar no serviço.** Crie o secret da org `SES_SENDER_EMAIL` com o **mesmo** remetente. A pipeline
+   do os-service troca para `NOTIFICATION_CHANNEL=ses` sozinha quando ele existe; sem o secret, fica
+   no SNS. Com `ses` e sem remetente o pod **não sobe** (`CrashLoopBackOff`), de propósito.
+4. **Permissão.** `ses:SendEmail` nas identidades da conta já vem no `workbench-k8s-terraform`. Se o
+   cluster foi criado antes disso, rode o CD dele de novo.
+
+Cliente **sem e-mail cadastrado** não recebe nada (fica no log). Falha de envio nunca reverte a OS.
+Este caminho **não foi testado contra o SES real** (o LocalStack da comunidade não tem SES).
+
 ---
 
 ## FASE 5 — Ligar o lambda (autenticação)
@@ -376,7 +401,7 @@ entra na **FASE 8**.
   [cartão de teste](https://www.mercadopago.com.br/developers/pt/docs/checkout-pro/integration-test/test-cards)
   com um comprador de teste; em até ~30 s a OS vai para PAGO → ENTREGUE.
 - Ao entrar em `PAGAMENTO_PENDENTE`, a cobrança é criada automaticamente e o **link
-  de pagamento** é enviado ao cliente por e-mail (tópico de notificações).
+  de pagamento** é enviado por e-mail: ao **cliente**, se o canal SES estiver ligado (FASE 4); senão, ao endereço inscrito no tópico de notificações.
 
 **Como ligar:** mergear as PRs `ci/sonarcloud-config` dos 4 serviços na `main`
 (o push na main com `USE_AWS=true` dispara o `deploy-aws`):

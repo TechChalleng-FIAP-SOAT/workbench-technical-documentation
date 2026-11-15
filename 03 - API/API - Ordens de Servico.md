@@ -109,7 +109,7 @@ FINALIZADA → PAGAMENTO_PENDENTE → PAGO → ENTREGUE` (ou `RECUSADA`).
 - `FINALIZADA` exige **todos os serviços `DONE`** → senão **409**. O caminho normal é
   executar os serviços (`/order/{id}/services/...`): o último `DONE` finaliza a OS sozinho.
 - Ao entrar em `PAGAMENTO_PENDENTE` a Saga pede a cobrança ao Billing
-  (`ComandoCobrarPagamento`); o link do Mercado Pago vai por e-mail ao cliente.
+  (`ComandoCobrarPagamento`); o link do Mercado Pago vai por e-mail (ao cliente com o canal SES; com o SNS, ao endereço inscrito no tópico).
 
 ## POST /order/{id}/payment-retry
 
