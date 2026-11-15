@@ -11,15 +11,24 @@ aliases:
 
 # Variáveis de Ambiente
 
-Todas têm default para rodar local; na AWS vêm do `k8s/configmap.yaml` e dos Secrets de cada
-serviço (injetados pelo CD a partir dos GitHub Secrets).
+Na AWS, os valores vêm do `k8s/configmap.yaml` e dos Secrets de cada serviço (injetados pelo
+CD a partir dos GitHub Secrets).
+
+> [!warning] Segredos não têm valor padrão
+> `JWT_SECRET`, `SPRING_DATASOURCE_PASSWORD`, `PAYMENT_PROVIDER` (billing) e
+> `ADMIN_INITIAL_PASSWORD` (customer) são obrigatórios: sem eles o serviço não sobe. Os valores
+> de desenvolvimento ficam no perfil `local` (`application-local.yml` de cada serviço), que o
+> compose do `workbench-messaging` ativa com `SPRING_PROFILES_ACTIVE=local`. Rodando pela IDE
+> ou pelo Maven: `./mvnw spring-boot:run -Dspring-boot.run.profiles=local`.
 
 ## Comuns a todos os serviços
 
 | Variável | Default | Descrição |
 |---|---|---|
 | `SERVER_PORT` | `8080` | Porta HTTP |
-| `JWT_SECRET` | segredo de dev | HS256 — **o mesmo** em todos os serviços e na Lambda |
+| `JWT_SECRET` | — (dev no perfil `local`) | HS256 — **o mesmo** em todos os serviços e na Lambda |
+| `SPRING_PROFILES_ACTIVE` | — | `local` libera os valores de desenvolvimento |
+| `SCHEDULING_POOL_SIZE` | `4` | Threads dos jobs `@Scheduled` (os, billing, execution) |
 | `LOG_JSON_FILE` | `/tmp/workbench/<serviço>.log` | Arquivo de log JSON (coletado pelo Datadog Agent) |
 | `DD_SERVICE` / `DD_ENV` / `DD_VERSION` | nome do serviço / `local` / `local` | Tags do Datadog (logs e métricas) |
 | `DD_METRICS_ENABLED` | `false` | Liga o envio de métricas Micrometer → Datadog |
@@ -29,7 +38,7 @@ serviço (injetados pelo CD a partir dos GitHub Secrets).
 
 | Serviço | Variáveis | Default |
 |---|---|---|
-| os | `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | `jdbc:postgresql://localhost:15432/os_service`, `dbadmin` |
+| os | `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | `jdbc:postgresql://localhost:15432/os_service`, `dbadmin`; senha sem padrão (dev no perfil `local`) |
 | billing | idem | `jdbc:postgresql://localhost:15433/billing` |
 | customer | idem | `jdbc:postgresql://localhost:15434/customer` |
 | execution | `MONGODB_URI` | `mongodb://localhost:27017/execution` (na AWS, a URI `mongodb+srv://` do Atlas) |
@@ -55,8 +64,10 @@ No LocalStack: ARN `arn:aws:sns:us-east-1:000000000000:<tópico>` e URL
 |---|---|---|---|
 | os | `CUSTOMER_VALIDATION_ENABLED` | `false` | Valida cliente/placa no Customer Service ao abrir a OS |
 | os | `CUSTOMER_SERVICE_URL` | — | Base URL do Customer (ex.: `http://customer-service:8080`) |
-| customer | `ADMIN_INITIAL_PASSWORD` | — | Troca a senha do admin semeado no primeiro start (≥ 8 caracteres) |
-| billing | `PAYMENT_PROVIDER` | `fake` | `fake` (webhook simulado) ou `mercadopago` |
+| customer | `ADMIN_INITIAL_PASSWORD` | — (obrigatório fora do perfil `local`) | Troca a senha do admin semeado no primeiro start (≥ 8 caracteres); sem ela, com o admin ainda em `admin123`, o serviço não sobe |
+| billing | `PAYMENT_PROVIDER` | — (`fake` no perfil `local`) | `fake` (webhook simulado, só local/testes) ou `mercadopago` |
+| billing | `MP_CONNECT_TIMEOUT` / `MP_READ_TIMEOUT` | `5s` / `10s` | Timeouts das chamadas ao Mercado Pago |
+| os | `CUSTOMER_CONNECT_TIMEOUT` / `CUSTOMER_READ_TIMEOUT` | `2s` / `5s` | Timeouts das chamadas ao customer-service |
 | billing | `MP_ACCESS_TOKEN` | — | Token do Mercado Pago (`TEST-…` sandbox, `APP_USR-…` produção) |
 | billing | `MP_BASE_URL` | `https://api.mercadopago.com` | API do Mercado Pago |
 | billing | `MP_NOTIFICATION_URL` | — | Opcional; a confirmação vem do job de consulta |

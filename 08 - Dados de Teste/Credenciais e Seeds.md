@@ -21,13 +21,14 @@ aliases:
 | Campo | Valor |
 |---|---|
 | E-mail | `admin@workbench.dev` |
-| Senha | `admin123` — **enquanto** `ADMIN_INITIAL_PASSWORD` não for definida |
+| Senha | `admin123` só no perfil `local`; fora dele, a de `ADMIN_INITIAL_PASSWORD` |
 | Role | `ADMIN` |
 | Origem | `workbench-customer-service/.../db/migration/V2__users.sql` |
 
 Com `ADMIN_INITIAL_PASSWORD` (≥ 8 caracteres) o serviço troca a senha no primeiro start
-(`AdminPasswordInitializer`); sem ela, loga um aviso. Na AWS a variável é obrigatória na
-prática — defina-a nos secrets.
+(`AdminPasswordInitializer`). Fora do perfil `local`, sem ela o serviço **não sobe** enquanto o
+admin continuar com `admin123`; no perfil `local` (compose) só loga um aviso. Na AWS, defina-a
+nos secrets da org (a pipeline também a exige).
 
 Login (só na AWS, pela Lambda): `POST {gatewayUrl}/auth/login` com
 `{"email":"admin@workbench.dev","password":"..."}`. Local: gere um token de dev

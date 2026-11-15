@@ -108,8 +108,8 @@ graph LR
 
 | Entrega | Na Fase 3 | Hoje | Continua? |
 |---|---|---|---|
-| API Gateway | Tudo ia para o monólito | Rotas por prefixo para o serviço dono | 🔄 |
-| Lambda de autenticação por CPF | Lia o banco direto | Consulta o customer-service por REST; também faz login de staff ([[API - Autenticacao]]) | 🔄 |
+| API Gateway | Tudo ia para o monólito | Rotas por prefixo para o serviço dono, por VPC Link até NLBs internos (os serviços não ficam na internet) | 🔄 |
+| Lambda de autenticação por CPF | Lia o banco direto | Consulta o customer-service por REST, dentro da VPC; também faz login de staff. CPF inexistente ou inativo recebe o mesmo 401 ([[API - Autenticacao]]) | 🔄 |
 | Banco gerenciado | 1 RDS | 3 RDS (um por serviço) + MongoDB Atlas | 🔄 |
 | Diagrama ER e justificativa do banco | Do monólito | Um ER por instância; justificativa por serviço | ✅ |
 | Repositórios separados com CI/CD | 4 | 11 | 🔄 Ampliado |
@@ -128,7 +128,7 @@ graph LR
 | Saga com compensação | Orquestrada no os-service ([[Arquitetura e Saga - Visao Completa V2]]) | ✅ |
 | BDD | Cucumber no os-service | ✅ |
 | Qualidade no CI | SonarCloud nas 4 pipelines | ✅ |
-| Mercado Pago | Checkout Pro + consulta periódica | ⚠️ Chamadas sem timeout (ver seção 5) |
+| Mercado Pago | Checkout Pro + consulta periódica, com timeout nas chamadas | ✅ |
 | Contrato das mensagens (extra) | JSON + testes nos 3 serviços da Saga ([[Contratos de Mensagem]]) | ✅ |
 
 ---
@@ -170,18 +170,18 @@ graph LR
 |---|---|---|---|---|
 | JWT nas APIs | 1 | 🔄 | [[JWT]], [[Spring Security Config]] | Os 4 serviços validam o token; a emissão saiu para a Lambda. |
 | Autorização por papel e por dono | 3, 4 | ✅ | [[Autorizacao e Roles]] | Cliente só vê e decide os próprios dados. |
-| API Gateway | 3 | 🔄 | `workbench-gateway` | Cada prefixo vai ao serviço dono, com authorizer JWT. |
+| API Gateway | 3 | 🔄 | `workbench-gateway` | Cada prefixo vai ao serviço dono, com authorizer JWT, por VPC Link até o NLB interno de cada serviço. |
 | Function serverless de autenticação | 3 | 🔄 | `workbench-lambda` | Consulta o customer-service por REST, não o banco. |
 | Login de staff | 3 | ✅ | customer-service | Senha inicial do admin por secret; bloqueio após 5 erros seguidos. |
-| Segredos fora do código | 2 | ✅ | Secrets da org → pipeline | Os `k8s/secret.yaml` só têm placeholders. |
+| Segredos fora do código | 2 | ✅ | Secrets da org → pipeline | Os `k8s/secret.yaml` só têm placeholders, e os `application.yml` não têm valor padrão para segredos: sem `JWT_SECRET`, senha do banco, `PAYMENT_PROVIDER` ou `ADMIN_INITIAL_PASSWORD`, o serviço não sobe. Os valores de desenvolvimento ficam no perfil `local`. |
 | Scan de vulnerabilidades | 1 | ✅ | [[Relatorio de Vulnerabilidades - Fase 4]], [[OWASP ZAP]] | ZAP e Trivy sem achados HIGH/CRITICAL nem FAIL/WARN; SAST no Sonar. |
 
 ### Qualidade e testes
 
 | Requisito | Fase | Hoje | Onde está | O que mudou |
 |---|---|---|---|---|
-| Testes unitários e de integração | 1, 2, 4 | ✅ | `src/test` de cada serviço ([[Rodando Testes]]) | 450 testes, 0 falhas (15/11/2026): os 231, billing 69, customer 79, execution 71. |
-| Cobertura ≥ 80% | 1, 4 | ✅ | Gate JaCoCo no `verify` | Linhas em 15/11/2026: os 90,4%, execution 89,1%, customer 86,9%, billing 85,6%. |
+| Testes unitários e de integração | 1, 2, 4 | ✅ | `src/test` de cada serviço ([[Rodando Testes]]) | 455 testes, 0 falhas (15/11/2026): os 232, billing 71, customer 81, execution 71. |
+| Cobertura ≥ 80% | 1, 4 | ✅ | Gate JaCoCo no `verify` | Linhas em 15/11/2026: os 89,8%, execution 89,0%, customer 87,0%, billing 85,8%. |
 | BDD | 4 | ✅ | `ordem_servico.feature` (os-service) | Fluxo feliz, recusa e transição inválida. |
 | Sonar no CI | 4 | ✅ | Job `code-analysis` ([[SonarQube]]) | Entrou na Fase 4. |
 | Testes de contrato | 4 (extra) | ✅ | `*SagaContractTest` nos 3 serviços da Saga | O CI compara a cópia de cada serviço com o contrato do `workbench-messaging`. |
@@ -191,7 +191,7 @@ graph LR
 | Requisito | Fase | Hoje | Onde está | O que mudou |
 |---|---|---|---|---|
 | docker-compose completo | 1, 2 | ✅ | `workbench-messaging/docker-compose.dev.yml` ([[Quickstart]]) | Com `--profile app`, sobe LocalStack, os bancos, os 4 serviços e um gateway local em `:8000`. |
-| Manifestos e HPA | 2 | ✅ | `k8s/` de cada serviço | Um namespace por serviço; HPA por CPU. |
+| Manifestos e HPA | 2 | ✅ | `k8s/` de cada serviço | Um namespace por serviço; HPA por CPU (dono das réplicas); PDB; pods não-root com sistema de arquivos somente leitura; `startupProbe`. |
 | Terraform do cluster | 2, 3 | 🔄 | `workbench-k8s-terraform` | Repositório próprio desde a Fase 3. |
 | Pipeline por serviço | 2, 4 | ✅ | `.github/workflows/pipeline.yml` | `unit-test → code-analysis → build → docker-build-push → deploy-aws` (+ `datadog-config`). |
 | Homologação e produção | 3 | ✅ | `develop` e `main` | O nome da branch é o ambiente; deploy no EKS com `USE_AWS=true`. |
@@ -214,7 +214,6 @@ graph LR
 ## 5. Limitações conhecidas
 
 > [!warning] Registradas em 14/11/2026
-> - **Chamadas HTTP sem timeout:** billing → Mercado Pago e os-service → customer-service. Se o Mercado Pago aceitar a conexão e não responder, nenhum pagamento é confirmado até o pod reiniciar.
 > - **Conferência do contrato no CI:** só funciona com `contracts/saga-messages.json` na `main` do `workbench-messaging`; sem ele, o passo avisa e segue.
 > - **Limite de login por réplica:** com N pods, são N × 5 tentativas por janela (decisão registrada no código).
 > - **Estorno sem gatilho:** o billing sabe estornar, mas nenhuma regra da Saga pede estorno hoje.

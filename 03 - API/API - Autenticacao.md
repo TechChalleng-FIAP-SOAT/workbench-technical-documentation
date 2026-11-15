@@ -40,8 +40,7 @@ aliases:
 |---|---|---|
 | 200 | `{ "token": "...", "expiresIn": 86400000, "client": { "id": 1, "name": "MARIA OLIVEIRA" } }` | cliente existe e está ativo |
 | 400 | `{ "error": "Invalid CPF" }` | documento ausente ou dígitos inválidos |
-| 403 | `{ "error": "Client is inactive" }` | cliente desativado |
-| 404 | `{ "error": "Client not found" }` | documento sem cadastro |
+| 401 | `{ "error": "CPF not authorized" }` | documento sem cadastro **ou** cliente desativado — mesma resposta de propósito, para não revelar quais CPFs existem |
 
 Token do cliente: `sub` = documento, claim `clientId`, `roles: ["CLIENT"]`. O cliente só
 enxerga as **próprias** OS, orçamentos, pagamentos, cadastro e veículos (dono conferido
