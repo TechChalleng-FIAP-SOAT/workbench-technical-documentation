@@ -76,7 +76,7 @@ graph LR
 | Entrega | Na Fase 1 | Hoje | Continua? |
 |---|---|---|---|
 | Monólito em camadas | `workbench-monolith` | Substituído por 4 microsserviços | 🔄 Como referência histórica |
-| DDD (Event Storming, linguagem ubíqua) | Miro + [[Event Storming - miro]] | Os bounded contexts viraram os limites dos serviços (ADR-0003) | ✅ |
+| DDD (Event Storming, linguagem ubíqua) | Miro + [[Event Storming - miro]] | Os bounded contexts viraram os limites dos serviços (ADR-0006) | ✅ |
 | CRUD de clientes e veículos | Monólito | customer-service: [[API - Clientes]], [[API - Veiculos]] | 🔄 Mudou de repositório |
 | CRUD de serviços | Monólito | os-service: [[API - Servicos]] | 🔄 Mudou de repositório |
 | CRUD de peças e insumos | `/api/parts` e `/api/supplies` | execution-service: [[API - Pecas e Suprimentos]], [[API - Estoque]] | 🔄 Catálogo único (`Product` PART/SUPPLY) |
@@ -115,7 +115,7 @@ graph LR
 | Repositórios separados com CI/CD | 4 | 11 | 🔄 Ampliado |
 | `main` protegida com PR | 4 repositórios | Os 11; check `unit-test` exigido nos 4 serviços | ✅ |
 | Datadog | Monólito | Agent + APM + dashboards e monitores por serviço; `saga_id` nos logs | ✅ Ampliado |
-| RFCs e ADRs | `workbench-monolith/docs` | Mesmo lugar, com ADR-0005 e ADR-0006 novas | ✅ |
+| RFCs e ADRs | `workbench-monolith/docs` | Mesmo lugar, com ADR-0005 a ADR-0008 novas (fluxo da OS, microsserviços, rede e segredos, robustez da Saga) | ✅ |
 | Diagramas de componentes e sequência | Monólito | [[Arquitetura e Saga - Visao Completa V2]], [[Arquitetura Alvo Microsservicos]] | ✅ |
 
 ### Fase 4 — Microsserviços e Saga
@@ -195,7 +195,7 @@ graph LR
 | Terraform do cluster | 2, 3 | 🔄 | `workbench-k8s-terraform` | Repositório próprio desde a Fase 3. |
 | Pipeline por serviço | 2, 4 | ✅ | `.github/workflows/pipeline.yml` | `unit-test → code-analysis → build → docker-build-push → deploy-aws` (+ `datadog-config`). |
 | Homologação e produção | 3 | ✅ | `develop` e `main` | O nome da branch é o ambiente; deploy no EKS com `USE_AWS=true`. |
-| Datadog: latência, CPU/memória, uptime, alertas | 3 | ✅ | Dashboards e monitores versionados em cada serviço | Um dashboard por serviço + um da plataforma. |
+| Datadog: latência, CPU/memória, uptime, alertas | 3 | ✅ | Dashboards e monitores versionados em cada serviço | Um dashboard por serviço + um da plataforma. Mensagem em DLQ dispara alarme do CloudWatch (`workbench-messaging/alarms.tf`), com o passo a passo no [[Runbook]]. |
 | Logs JSON com correlação | 3 | ✅ | Logstash encoder + `dd.trace_id` + `saga_id` | Uma busca por `@saga_id` mostra a OS em todos os serviços. |
 
 ### Documentação
@@ -205,9 +205,10 @@ graph LR
 | README por repositório | 1, 2, 3 | ✅ | Cada repositório |
 | Swagger/Postman | 1–4 | ✅ | SpringDoc em cada serviço + `postman/` |
 | Diagramas de componentes e sequência | 3, 4 | ✅ | [[Arquitetura e Saga - Visao Completa V2]], [[Arquitetura e Saga - Visao Completa]] |
-| RFCs e ADRs | 3, 4 | ✅ | `workbench-monolith/docs/rfc` (RFC-0001 a 0003) e `docs/adr` (ADR-0001 a 0006) |
+| RFCs e ADRs | 3, 4 | ✅ | `workbench-monolith/docs/rfc` (RFC-0001 a 0003) e `docs/adr` (ADR-0001 a 0008) |
 | Contratos de mensagem | 4 | ✅ | [[Contratos de Mensagem]] |
 | Documentação de API por domínio | 1 | 🔄 | Pasta `03 - API`, reescrita para os microsserviços |
+| Guias de operação (extra) | 4 | ✅ | [[Deploy na AWS]], [[Desligar a AWS]], [[Runbook]], [[Saga Ponta a Ponta]], [[Auditoria de Codigo]] |
 
 ---
 

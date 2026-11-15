@@ -387,4 +387,4 @@ Visão de ponta a ponta, do ponto de vista de quem usa:
 
 > **Documentos relacionados:** V1 (`Arquitetura e Saga - Visao Completa.md`), ADRs/RFCs
 > em `workbench-monolith/docs`, collection Postman em `postman/`, guia de deploy em
-> `DEPLOY-AWS-GUIA.md` (raiz do workspace).
+> [[Deploy na AWS]].

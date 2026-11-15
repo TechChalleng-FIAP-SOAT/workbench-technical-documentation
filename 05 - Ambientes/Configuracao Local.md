@@ -36,7 +36,7 @@ EXECUTION_EVENTS_TOPIC_ARN=arn:aws:sns:us-east-1:000000000000:workbench-executio
 EXECUTION_COMMANDS_QUEUE_URL=http://localhost:4566/000000000000/workbench-execution-commands-queue \
 SERVER_PORT=8083 ./mvnw spring-boot:run
 ```
-As variáveis de cada serviço estão no `SAGA-E2E-LOCAL.md` (Passo 3) e em
+As variáveis de cada serviço estão no [[Saga Ponta a Ponta]] (Passo 3) e em
 [[Variaveis de Ambiente]].
 
 > [!tip] Misturar os dois

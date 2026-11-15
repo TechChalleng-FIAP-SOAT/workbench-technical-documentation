@@ -19,6 +19,7 @@ cssclasses:
 
 ### Entendendo o Sistema
 - [[Visao Geral]] — Os 4 microsserviços, a Saga e a evolução das fases
+- [[Decisoes de Arquitetura]] — Por que cada banco, a Saga orquestrada, SNS/SQS, EKS, Lambda…
 - [[Evolucao das Fases]] — O que cada fase pediu, onde ficou e se continua na Fase 4
 - [[Estrutura de Pastas]] — Repositórios e camadas de cada serviço
 - [[Tecnologias]] — Stack completa com versões
@@ -47,6 +48,7 @@ cssclasses:
 - [[Requisitos]] — Pré-requisitos e versões
 - [[Docker Compose]] — Serviços e orquestração
 - [[Rodando Testes]] — Unitários, integração e cobertura
+- [[Saga Ponta a Ponta]] — Roteiro com curl: fluxo feliz e compensação, sem AWS
 
 ### Ambientes
 - [[Variaveis de Ambiente]] — Todas as variáveis configuráveis
@@ -61,6 +63,12 @@ cssclasses:
 
 ### Qualidade de Código
 - [[SonarQube]] — Análise estática e cobertura
+- [[Auditoria de Codigo]] — Rodadas de auditoria, achados e decisões
+
+### Operação (AWS)
+- [[Deploy na AWS]] — Ligar a stack, fase a fase, com os secrets
+- [[Desligar a AWS]] — Destruir tudo para parar a cobrança
+- [[Runbook]] — DLQ, OS parada, troca do JWT, rollback
 
 ### Dados & Teste
 - [[Credenciais e Seeds]] — Dados pré-carregados e usuários padrão

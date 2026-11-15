@@ -27,7 +27,7 @@ aliases:
 
 > [!warning] Só existe na AWS
 > O login é feito pelas Lambdas atrás do API Gateway. Localmente não há Lambda: gere um
-> JWT de dev assinado com o `JWT_SECRET` padrão (o `SAGA-E2E-LOCAL.md` traz um pronto e o
+> JWT de dev assinado com o `JWT_SECRET` padrão (o [[Saga Ponta a Ponta]] traz um pronto e o
 > `workbench-messaging/zap/zap-scan.sh` mostra como assinar um).
 
 ## POST /auth — Login do cliente (CPF/CNPJ) · público

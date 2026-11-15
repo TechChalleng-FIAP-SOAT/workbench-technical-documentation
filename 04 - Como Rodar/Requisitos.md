@@ -15,7 +15,7 @@ aliases:
 |---|---|---|
 | Docker + Docker Compose v2 | 24+ / 2.20+ | Plataforma inteira (`--profile app`) |
 | ~6 GB de RAM livres para o Docker | — | 4 JVMs + 3 Postgres + Mongo + LocalStack |
-| `curl` e `jq` | qualquer | Roteiro `SAGA-E2E-LOCAL.md` |
+| `curl` e `jq` | qualquer | Roteiro [[Saga Ponta a Ponta]] |
 | Python 3 | 3.9+ | Gerar o token de dev ([[Quickstart]]) |
 
 O Terraform que cria as filas roda **dentro** de um container (`messaging-init`); não precisa
@@ -36,7 +36,7 @@ Cucumber (os-service), JaCoCo.
 ## Para a AWS
 
 Terraform ≥ 1.5, AWS CLI v2, `kubectl` e conta com permissão para EKS, RDS, Lambda, API
-Gateway, SNS/SQS — passo a passo em `DEPLOY-AWS-GUIA.md`.
+Gateway, SNS/SQS — passo a passo em [[Deploy na AWS]].
 
 ## Links Relacionados
 - [[Quickstart]]

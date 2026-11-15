@@ -56,7 +56,7 @@ Novos tipos: `POST /service-types` ([[API - Servicos]]).
 | Produto | `OLEO-5W30`, `SUPPLY`, `LITER`, venda 45,00 | `POST /api/products` |
 | Estoque | 100 unidades, mínimo 10 | `POST /api/stocks` |
 
-O roteiro completo (com os comandos) está no `SAGA-E2E-LOCAL.md` e na pasta "Fluxo Saga" da
+O roteiro completo (com os comandos) está no [[Saga Ponta a Ponta]] e na pasta "Fluxo Saga" da
 collection `postman/workbench-plataforma.postman_collection.json`.
 
 ## Pagamento de teste

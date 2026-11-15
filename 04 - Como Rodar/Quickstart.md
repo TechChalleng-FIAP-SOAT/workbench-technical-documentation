@@ -56,7 +56,7 @@ curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8000/service-types
 
 ## 3. Testar o fluxo
 
-- **Passo a passo da Saga (curl):** `SAGA-E2E-LOCAL.md` na raiz do workspace.
+- **Passo a passo da Saga (curl):** [[Saga Ponta a Ponta]].
 - **Postman/Bruno:** `postman/workbench-plataforma.postman_collection.json` — aponte
   `osUrl`, `customerUrl`, `billingUrl` e `executionUrl` para `http://localhost:8000`.
 
@@ -71,7 +71,7 @@ docker compose -f docker-compose.dev.yml --profile app down -v    # apaga os ban
 
 Para depurar um serviço na IDE: suba só a infra (`docker compose -f docker-compose.dev.yml up -d`,
 sem profile), rode `./bootstrap-localstack.sh` para criar as filas e suba cada serviço com
-`./mvnw spring-boot:run` e as variáveis do `SAGA-E2E-LOCAL.md` (Passo 3).
+`./mvnw spring-boot:run` e as variáveis do [[Saga Ponta a Ponta]] (Passo 3).
 
 ## Links Relacionados
 - [[Requisitos]]

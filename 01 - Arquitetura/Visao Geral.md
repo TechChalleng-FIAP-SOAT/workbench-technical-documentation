@@ -22,6 +22,7 @@ insumos e monitoramento do tempo de execução.
 | **4 (atual)** | **4 microsserviços** + Saga orquestrada por SNS/SQS |
 
 Requisito por requisito, com o que mudou de lugar entre as fases: [[Evolucao das Fases]].
+Por que cada escolha (bancos, Saga, mensageria, nuvem): [[Decisoes de Arquitetura]].
 
 ## Microsserviços
 
