@@ -49,6 +49,13 @@ Todos os serviços têm healthcheck em `/actuator/health` e `depends_on` com
   Datadog Agent local coletar.
 - **Pagamento:** `PAYMENT_PROVIDER=fake` por padrão; para o sandbox do Mercado Pago exporte
   `PAYMENT_PROVIDER=mercadopago` e `MP_ACCESS_TOKEN=TEST-...` antes do `up`.
+- **Perfil `local`:** o compose define `SPRING_PROFILES_ACTIVE=local` nos 4 serviços. É ele
+  que libera os valores de desenvolvimento (segredo do JWT, pagamento simulado, admin com
+  `admin123`); fora dele os segredos são obrigatórios.
+- **Containers como os pods do EKS:** usuário não-root (UID 10001), sistema de arquivos
+  somente leitura com só `/tmp` gravável, sem capabilities (`cap_drop: ALL`) e
+  `no-new-privileges`. Se um serviço tentar gravar fora de `/tmp`, o erro aparece aqui,
+  antes de chegar ao cluster.
 
 ## Comandos úteis
 

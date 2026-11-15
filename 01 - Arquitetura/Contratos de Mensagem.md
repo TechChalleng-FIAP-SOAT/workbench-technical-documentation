@@ -15,8 +15,10 @@ pelo OS Service. Duas categorias:
 - **Comando** (`Comando*`): o orquestrador (OS Service) pede a um serviço que execute algo.
 - **Evento** (`*` no passado): um serviço informa um fato consumado.
 
-> **Idempotência obrigatória**: SQS entrega *at-least-once*. Todo consumidor deve
-> deduplicar por `messageId` + `sagaId`.
+> **Idempotência obrigatória**: SQS entrega *at-least-once*. Todo consumidor precisa
+> aguentar a mesma mensagem duas vezes: os participantes são idempotentes (reservar, baixar,
+> liberar, gerar orçamento e cobrar de novo dão o mesmo resultado) e o orquestrador só aceita
+> cada evento no passo esperado. O dedupe por `messageId` em memória é só uma otimização.
 
 ## Envelope comum
 
@@ -25,13 +27,21 @@ Todas as mensagens compartilham o mesmo envelope:
 ```json
 {
   "messageId": "uuid",         // único por mensagem (dedupe)
-  "sagaId": "uuid",            // correlaciona todos os passos de uma Saga
+  "sagaId": "uuid",            // rodada da Saga (muda a cada novo diagnóstico) — ver abaixo
   "serviceOrderId": "uuid",    // OS alvo
   "type": "ComandoReservarEstoque",
   "occurredAt": "2026-10-02T12:00:00Z",
   "payload": { }               // específico do tipo (abaixo)
 }
 ```
+
+**`sagaId` = rodada da Saga.** O orquestrador gera um `sagaId` novo a cada início ou novo
+diagnóstico e põe esse valor em todo comando. **O participante devolve o `sagaId` que
+recebeu**; o orquestrador descarta resposta com `sagaId` de outra rodada (reentrega antiga
+do SQS). `PagamentoConfirmado` e `PagamentoFalhou` não respondem a um comando — saem do job
+de consulta ao Mercado Pago ou do webhook simulado —, por isso o billing grava o `sagaId` do
+`ComandoCobrarPagamento` na cobrança e publica o resultado com ele (ADR-0008). Para seguir
+uma OS por todas as rodadas, use `serviceOrderId`.
 
 ## Tabela de contratos
 
@@ -74,7 +84,9 @@ Todas as mensagens compartilham o mesmo envelope:
 
 ## Regras
 
-- **Dedupe** por (`sagaId`, `type`) ou `messageId` persistido por consumidor.
+- **Repetição e atraso:** o orquestrador aceita cada evento só no passo esperado e só da
+  rodada atual (`sagaId`); os participantes são idempotentes. O dedupe por `messageId` é em
+  memória, por réplica — uma otimização, não a garantia.
 - **DLQ** por fila após N tentativas (sugestão: 3) — mensagens na DLQ exigem inspeção manual.
 - **Estado da Saga** persistido no OS Service (tabela `saga_state`) para sobreviver a quedas.
 - Comandos de compensação são sempre **idempotentes** (liberar reserva já liberada = no-op).

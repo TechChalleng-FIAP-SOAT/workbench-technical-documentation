@@ -199,6 +199,20 @@ Uma revisão externa listou 9 pontos. Todos foram conferidos no código; os que 
 | 8 | Corrida em `CreatePaymentUseCase` criava preferência extra no Mercado Pago | ✅ Corrigido | A linha do orçamento é travada (`SELECT ... FOR UPDATE`) antes de ler o pagamento: a segunda réplica espera e devolve a cobrança da primeira. `ConcurrentChargeIntegrationTest` (Postgres real) falha sem a trava e passa com ela. |
 | — | (achado na conferência) `app.yaml` com `image: REPLACE_IMAGE` gerava um rollout quebrado a cada deploy | ✅ Corrigido | O pipeline substitui a imagem antes do `apply` e não usa mais `kubectl set image`. O `Deployment` também deixou de fixar `replicas: 1`, que desfazia o HPA a cada deploy. |
 
+## Correção de 15/11/2026 — pagamento descartado pela Saga
+
+Achado ao rodar o roteiro do vídeo no compose local: a OS ficava em `PAGAMENTO_PENDENTE`.
+O billing publicava `PagamentoConfirmado` com o id da OS como `sagaId`, e desde o `sagaId`
+por rodada (ADR-0008) o orquestrador descartava o evento como "de outra rodada". Os testes
+não pegaram porque as Sagas de teste usavam o id da OS como rodada.
+
+| O que mudou | Onde |
+|---|---|
+| A cobrança guarda o `sagaId` do `ComandoCobrarPagamento` (também na nova cobrança após recusa) | billing: `Payment.bindToSaga`, `CreatePaymentUseCase`, migration `V9__payment_saga_id.sql` |
+| O resultado do pagamento sai com esse `sagaId` (sem ele, o id da OS) | billing: `PaymentDecisionRecorder`, `SnsPaymentEventAdapter` |
+| Teste do caminho real: Saga nova até `ENTREGUE`, e o pagamento com o id da OS é descartado | os: `newSagaRunsToDeliveredWhenEveryReplyCarriesItsRun` |
+| Testes da cobrança com rodada, nova cobrança e fallback | billing: `PaymentUseCasesTest`, `SagaCommandHandlerTest` |
+
 ---
 
 ## 3. Clean code e padrões — records, `.builder()` e controllers

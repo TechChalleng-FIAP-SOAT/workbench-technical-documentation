@@ -57,8 +57,10 @@ curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8000/service-types
 ## 3. Testar o fluxo
 
 - **Passo a passo da Saga (curl):** [[Saga Ponta a Ponta]].
-- **Postman/Bruno:** `postman/workbench-plataforma.postman_collection.json` — aponte
-  `osUrl`, `customerUrl`, `billingUrl` e `executionUrl` para `http://localhost:8000`.
+- **Postman/Bruno:** importe `postman/workbench-plataforma.postman_collection.json` e o
+  environment `postman/workbench-local.postman_environment.json` (gateway em
+  `http://localhost:8000`, token de dev pronto). Para a AWS há o
+  `workbench-aws.postman_environment.json` — ver o README da pasta `postman/`.
 
 ## 4. Derrubar
 
@@ -71,7 +73,9 @@ docker compose -f docker-compose.dev.yml --profile app down -v    # apaga os ban
 
 Para depurar um serviço na IDE: suba só a infra (`docker compose -f docker-compose.dev.yml up -d`,
 sem profile), rode `./bootstrap-localstack.sh` para criar as filas e suba cada serviço com
-`./mvnw spring-boot:run` e as variáveis do [[Saga Ponta a Ponta]] (Passo 3).
+`./mvnw spring-boot:run -Dspring-boot.run.profiles=local` e as variáveis do
+[[Saga Ponta a Ponta]] (Passo 3). Sem o perfil `local` o serviço não sobe: `JWT_SECRET`, a
+senha do banco e (no billing) `PAYMENT_PROVIDER` não têm valor padrão.
 
 ## Links Relacionados
 - [[Requisitos]]

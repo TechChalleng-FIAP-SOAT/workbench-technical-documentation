@@ -87,7 +87,8 @@ Passo a passo completo para **ligar** a stack na AWS, **testar/gravar o vídeo**
 
 **O que faz:** cria a rede (VPC, subnets, NAT) e o cluster Kubernetes (EKS) +
 node group + metrics-server, e dá aos nós a permissão de **publicar no SNS e ler do SQS**
-(`workbench-*`), que os pods usam na Saga. É a base de tudo.
+(`workbench-*`) e de usar a chave KMS dos tópicos (só via SNS), que os pods usam na Saga.
+É a base de tudo.
 
 > **Cluster já criado antes da permissão de SNS/SQS?** Rode o CD do `k8s-terraform` de
 > novo depois de mergear a mudança: o `apply` só cria a policy e a anexa à role dos nós
@@ -259,7 +260,8 @@ no EKS em produção. Não há Terraform aqui: o Atlas é criado no painel, **um
 
 ## FASE 4 — Ligar o messaging (SNS/SQS) 🟡 terminal (sem pipeline)
 
-**O que faz:** cria os tópicos SNS e filas SQS da Saga na AWS real.
+**O que faz:** cria os tópicos SNS e filas SQS da Saga na AWS real, cifrados (chave KMS
+própria nos tópicos, ~US$ 1/mês; criptografia do SQS nas filas), e os alarmes das DLQs.
 
 **Por que no terminal:** este repo não tem workflow de CI/CD; é aplicado
 manualmente (o padrão dele é LocalStack; com `use_localstack=false` vai pra AWS).

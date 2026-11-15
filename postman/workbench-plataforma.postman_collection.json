@@ -1,13 +1,13 @@
 {
   "info": {
     "name": "Workbench - Plataforma (todos os microsserviços)",
-    "description": "Collection unificada dos 4 microsserviços da plataforma Workbench (Fase 4).\n\nCada serviço tem sua baseUrl (localmente, uma porta por serviço). Importe junto o environment 'Workbench - Local' (workbench-local.postman_environment.json) e selecione-o no canto superior direito do Postman.\n\nVariáveis: customerUrl (8081), osUrl (8080), billingUrl (8082), executionUrl (8083), gatewayUrl (8080), token (JWT staff), e variáveis capturadas em runtime (clientId, productId, orderId, gatewayPaymentId).\n\nSEGURANCA: TODOS os servicos agora exigem JWT (Bearer) — menos as rotas publicas: login (/auth, /auth/login), o webhook de pagamento e health/swagger. A collection ja envia o token em todas as requisicoes (auth Bearer {{token}} no nivel da collection); as rotas publicas usam 'No Auth' individualmente.\n\nAUTENTICACAO LOCAL: a Lambda de login so existe na AWS. Localmente, use o token dev ja preenchido no environment (staff ADMIN, HS256 com o secret compartilhado). A pasta 'Autenticacao' documenta os endpoints reais para quando houver o Gateway no ar.\n\nA pasta 'Fluxo Saga (E2E)' executa o caminho feliz ponta a ponta na ordem correta — rode de cima para baixo (ou use o Collection Runner). A cobranca e criada AUTOMATICAMENTE ao entrar em PAGAMENTO_PENDENTE; o passo 'Buscar cobranca' pega o checkoutUrl (link de pagamento).",
+    "description": "Collection unificada dos 4 microsserviços da plataforma Workbench (Fase 4).\n\nCada serviço tem sua baseUrl (localmente, uma porta por serviço). Importe junto um environment e selecione-o no canto superior direito do Postman: 'Workbench - Local' (workbench-local.postman_environment.json, compose local) ou 'Workbench - AWS' (workbench-aws.postman_environment.json, tudo pelo API Gateway — na AWS os serviços têm NLB interno e não respondem direto).\n\nVariáveis: customerUrl (8081), osUrl (8080), billingUrl (8082), executionUrl (8083), gatewayUrl (8000 local; invoke_url do API Gateway na AWS), token (JWT staff), e variáveis capturadas em runtime (clientId, productId, orderId, gatewayPaymentId).\n\nSEGURANCA: TODOS os servicos agora exigem JWT (Bearer) — menos as rotas publicas: login (/auth, /auth/login), o webhook de pagamento e health/swagger. A collection ja envia o token em todas as requisicoes (auth Bearer {{token}} no nivel da collection); as rotas publicas usam 'No Auth' individualmente.\n\nAUTENTICACAO LOCAL: a Lambda de login so existe na AWS. Localmente, use o token dev ja preenchido no environment (staff ADMIN, HS256 com o secret compartilhado). A pasta 'Autenticacao' documenta os endpoints reais para quando houver o Gateway no ar.\n\nA pasta 'Fluxo Saga (E2E)' executa o caminho feliz ponta a ponta na ordem correta — rode de cima para baixo (ou use o Collection Runner). A cobranca e criada AUTOMATICAMENTE ao entrar em PAGAMENTO_PENDENTE; o passo 'Buscar cobranca' pega o checkoutUrl (link de pagamento).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     {
       "key": "gatewayUrl",
-      "value": "http://localhost:8080"
+      "value": "http://localhost:8000"
     },
     {
       "key": "customerUrl",
@@ -60,6 +60,18 @@
     {
       "key": "serviceTypeId",
       "value": ""
+    },
+    {
+      "key": "staffEmail",
+      "value": "admin@workbench.dev"
+    },
+    {
+      "key": "staffPassword",
+      "value": ""
+    },
+    {
+      "key": "clientToken",
+      "value": ""
     }
   ],
   "auth": {
@@ -75,7 +87,7 @@
   "item": [
     {
       "name": "Autenticação (via Gateway - só na AWS)",
-      "description": "Login de cliente (CPF) e de staff (e-mail/senha). Ambos públicos, atendidos pela Lambda atrás do API Gateway. SÓ FUNCIONA NA AWS. Localmente, use o token dev já preenchido no environment. O login staff, quando usado contra o Gateway, captura o token automaticamente.",
+      "description": "Login de cliente (CPF) e de staff (e-mail/senha). Ambos públicos, atendidos pelas Lambdas atrás do API Gateway. SÓ FUNCIONA NA AWS (environment 'Workbench - AWS'). Localmente não há Lambda: use o token de dev já preenchido no environment local. O login de staff usa {{staffEmail}}/{{staffPassword}} — na AWS a senha é a do secret ADMIN_INITIAL_PASSWORD (preencha no environment; não é admin123) — e captura {{token}}. O login do cliente captura {{clientToken}}. CPF sem cadastro ou cliente inativo recebe o mesmo 401 (de propósito: a resposta não revela quais CPFs existem).",
       "item": [
         {
           "name": "Login cliente (CPF)",
@@ -101,9 +113,21 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"cpf\": \"529.982.247-25\"\n}"
+              "raw": "{\n  \"cpf\": \"{{cpfCnpj}}\"\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) { var v = pm.response.json().token; pm.environment.set('clientToken', v); pm.collectionVariables.set('clientToken', v); }",
+                  "pm.test('200 com token, ou 401 para CPF sem cadastro/inativo', function () { pm.expect([200, 401]).to.include(pm.response.code); });"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Login staff (e-mail/senha)",
@@ -141,7 +165,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"email\": \"admin@workbench.dev\",\n  \"password\": \"admin123\"\n}"
+              "raw": "{\n  \"email\": \"{{staffEmail}}\",\n  \"password\": \"{{staffPassword}}\"\n}"
             }
           }
         }
@@ -1375,7 +1399,8 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"gatewayPaymentId\": \"{{gatewayPaymentId}}\",\n  \"approved\": true\n}"
-            }
+            },
+            "description": "SÓ LOCAL (PAYMENT_PROVIDER=fake). Simula a confirmação do gateway de pagamento. Na AWS (Mercado Pago) esta rota não existe (404): abra o checkoutUrl do passo anterior, pague com um cartão de teste (comprador de teste do Mercado Pago) e, em até ~30 s, o job de consulta confirma e a OS vai para PAGO → ENTREGUE."
           }
         },
         {

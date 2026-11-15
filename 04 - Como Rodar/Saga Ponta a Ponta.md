@@ -83,7 +83,7 @@ Os 4 arquivos (`os-service.log`, `customer-service.log`, `billing-service.log`,
 serviço (Passo 3) — é esperado que estejam ausentes agora.
 
 > Depois de tudo no ar, no Datadog (Logs Explorer, US) filtre por `service:os-service`
-> ou pelo fluxo da Saga com `@saga_id:<id-da-OS>`. Detalhes no Passo 8.
+> ou pelo fluxo de uma OS com `@service_order_id:<id-da-OS>`. Detalhes no Passo 8.
 
 ## Passo 1 — Subir a infra (bancos + LocalStack)
 
@@ -387,8 +387,10 @@ Os 4 arquivos devem aparecer com `Type: file` e `Status: OK` (integração `work
 
 ### 8.3 Buscar no Datadog (Logs Explorer, site US)
 - Por serviço: `service:os-service` (ou customer/billing/execution).
-- O fluxo de uma OS ponta a ponta: `@saga_id:<id-da-OS>` (o `saga_id` é o id da OS; cada
-  passo da Saga carrega essa chave no MDC, atravessando os 4 serviços).
+- O fluxo de uma OS ponta a ponta: `@service_order_id:<id-da-OS>` (cada passo da Saga
+  carrega essa chave no MDC, atravessando os serviços). `@saga_id:<sagaId>` filtra uma
+  **rodada** da Saga — um novo diagnóstico gera outro `sagaId`. O valor está no campo
+  `saga_id` de qualquer linha de log da OS.
 - Correlação de uma requisição: `@request_id:<valor>`.
 
 > **Nada aparece no Datadog?** (1) `sudo datadog-agent status` deve listar os 4 arquivos
