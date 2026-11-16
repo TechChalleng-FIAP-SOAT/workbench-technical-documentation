@@ -68,6 +68,8 @@ No LocalStack: ARN `arn:aws:sns:us-east-1:000000000000:<tópico>` e URL
 | billing | `PAYMENT_PROVIDER` | — (`fake` no perfil `local`) | `fake` (webhook simulado, só local/testes) ou `mercadopago` |
 | billing | `MP_CONNECT_TIMEOUT` / `MP_READ_TIMEOUT` | `5s` / `10s` | Timeouts das chamadas ao Mercado Pago |
 | os | `CUSTOMER_CONNECT_TIMEOUT` / `CUSTOMER_READ_TIMEOUT` | `2s` / `5s` | Timeouts das chamadas ao customer-service |
+| os | `NOTIFICATION_CHANNEL` | `sns` | Canal do e-mail ao cliente: `sns` (publica no tópico; chega só ao endereço inscrito) ou `ses` (envia direto ao e-mail cadastrado do cliente) |
+| os | `SES_SENDER_EMAIL` | — | Remetente verificado no SES. **Obrigatório com `NOTIFICATION_CHANNEL=ses`**: sem ele o serviço não sobe. Em sandbox, os destinatários também precisam estar verificados |
 | billing | `MP_ACCESS_TOKEN` | — | Access Token do Mercado Pago. Os dois começam com `APP_USR-`: o que define sandbox ou produção é a credencial usada (*Credenciais de teste* × *de produção*), não o prefixo |
 | billing | `MP_BASE_URL` | `https://api.mercadopago.com` | API do Mercado Pago |
 | billing | `MP_NOTIFICATION_URL` | — | Opcional; a confirmação vem do job de consulta |
@@ -76,6 +78,9 @@ No LocalStack: ARN `arn:aws:sns:us-east-1:000000000000:<tópico>` e URL
 > [!note] Removida
 > `JWT_EXPIRATION` não existe mais nos serviços: eles só **validam** tokens. A expiração é
 > definida na Lambda que emite o token.
+
+## Scan de segurança (ZAP)
+- `SERVICE_SCHEME` (padrão `http`) e `GATEWAY_URL`: alvo do `zap/zap-scan.sh` do `workbench-messaging`. Use `SERVICE_SCHEME=https` se o alvo tiver TLS.
 
 ## Lambda e gateway
 

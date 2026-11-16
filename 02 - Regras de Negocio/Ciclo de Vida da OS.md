@@ -39,8 +39,9 @@ stateDiagram-v2
   `EM_DIAGNOSTICO`; o motivo está em `GET /order/{id}/saga` e um novo diagnóstico recomeça a Saga.
 - **Pagamento recusado:** a OS segue em `PAGAMENTO_PENDENTE`; `POST /order/{id}/payment-retry`
   gera nova cobrança.
-- Cada mudança de status notifica o cliente por e-mail (tópico SNS de notificações) e registra
-  o tempo no status (métrica no Datadog).
+- Mudanças de status feitas pela API e a entrega disparam e-mail (canal SNS: só o endereço inscrito;
+  canal SES: o cliente). O pagamento recusado também gera e-mail (um por recusa). Transições feitas só
+  pela Saga (ex.: aprovação do orçamento) não enviam e-mail. O tempo em cada status vira métrica no Datadog.
 
 Rotas: [[API - Ordens de Servico]] · [[API - Servicos]] · Saga: [[Arquitetura e Saga - Visao Completa V2]].
 

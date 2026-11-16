@@ -58,7 +58,7 @@ flowchart TB
     EX <-->|comandos/eventos| sns
 
     OS -. valida cliente/veiculo REST .-> CU
-    BI <-->|pagamento + webhook| mp
+    BI <-->|cobrança + consulta de pagamento| mp
 ```
 
 ## Fluxo da Saga (orquestrada pelo OS Service)
@@ -74,19 +74,22 @@ sequenceDiagram
     EX-->>OS: ReservaConfirmada
     OS->>BI: ComandoGerarOrcamento
     BI-->>OS: OrcamentoGerado
-    Note over OS: aguarda aprovacao do cliente
+    Note over OS: aguarda aprovacao do cliente (pausa humana)
+    OS->>EX: ComandoConfirmarReserva (baixa de estoque)
+    EX-->>OS: ReservaBaixada
+    Note over OS: execução do serviço → FINALIZADA → PAGAMENTO_PENDENTE
     OS->>BI: ComandoCobrarPagamento
-    BI->>MP: cria pagamento
-    MP-->>BI: webhook: aprovado
-    BI-->>OS: PagamentoConfirmado
-    OS->>OS: avanca para EM_EXECUCAO
+    BI->>MP: cria preferência (link de pagamento)
+    BI-->>OS: CobrancaCriada (link por e-mail ao cliente)
+    loop a cada 30 s
+        BI->>MP: consulta o pagamento da OS
+    end
+    BI-->>OS: PagamentoConfirmado (mesmo sagaId da cobrança)
+    OS->>OS: OS → PAGO → ENTREGUE
 
-    Note over OS,MP: Falha no pagamento →
-    MP-->>BI: webhook: recusado
+    Note over OS,MP: Pagamento recusado →
     BI-->>OS: PagamentoFalhou
-    OS->>EX: ComandoLiberarReserva (compensacao)
-    OS->>BI: ComandoCancelarOrcamento (compensacao)
-    OS->>OS: reverte aprovacao
+    Note over OS: a OS fica em PAGAMENTO_PENDENTE, sem estorno de estoque (o serviço já foi executado).<br/>O cliente é avisado por e-mail e pede nova cobrança (payment-retry)
 ```
 
 ## Links Relacionados

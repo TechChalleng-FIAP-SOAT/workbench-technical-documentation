@@ -97,7 +97,7 @@ graph LR
 | Clean Code + Hexagonal | Refatoração do monólito | Mesmo padrão em cada serviço, uma classe por caso de uso ([[Padroes de Projeto]]) | ✅ |
 | Aprovação/recusa do orçamento por endpoint | Monólito | `POST /order/{id}/decision`, que aciona a Saga | ✅ |
 | Listagem ordenada de OS | Monólito | `findActiveOrdersSorted` no os-service | ✅ |
-| E-mail de mudança de status | SNS no monólito | Tópico dedicado no `workbench-messaging` | 🔄 Tópico próprio |
+| E-mail de mudança de status | SNS no monólito | Tópico dedicado no `workbench-messaging`; canal opcional SES para escrever ao cliente | 🔄 Tópico próprio + SES opcional |
 | Manifestos K8s | Um conjunto | Um por serviço, cada um no seu namespace | ✅ |
 | HPA | Um HPA | Um por serviço, por CPU (ADR-0002) | ✅ |
 | Terraform | No repositório da aplicação | Repositórios próprios de infraestrutura | 🔄 Separado |
@@ -142,10 +142,10 @@ graph LR
 | Abrir OS com cliente, veículo, serviços e peças | 1, 2 | 🔄 | os-service `POST /order` + `POST /order/{id}/diagnosis` | A OS nasce com cliente, veículo e serviços; as peças entram no diagnóstico, que inicia a Saga. Cliente e veículo são validados no customer-service. |
 | Status da OS e mudança automática | 1, 2 | 🔄 | `OrderServiceStatusEnum` + `SagaOrchestrator` ([[Ciclo de Vida da OS]]) | Ganhou `APROVADO`, `PAGAMENTO_PENDENTE`, `PAGO` e `RECUSADA`. A Saga muda os status sozinha. |
 | Cliente consulta o andamento | 1 | ✅ | `GET /order/document/{cpf}` | Cliente só vê o próprio CPF (403 para outro). |
-| Orçamento automático e envio ao cliente | 1, 4 | 🔄 | billing-service ([[Orcamento]]) + e-mail via SNS | Peças precificadas pelo execution + mão de obra por serviço, recebidas por mensagem. |
+| Orçamento automático e envio ao cliente | 1, 4 | 🔄 | billing-service ([[Orcamento]]) + e-mail (SNS ou SES) | Peças precificadas pelo execution + mão de obra por serviço, recebidas por mensagem. |
 | Aprovação/recusa por endpoint externo | 2 | ✅ | `POST /order/{id}/decision` | Aprovação dá baixa no estoque; recusa libera a reserva. |
 | Listagem ordenada sem Finalizada/Entregue | 2 | ✅ | `findActiveOrdersSorted` | Mesma regra do monólito. |
-| E-mail de mudança de status | 2 | 🔄 | Tópico `workbench-os-notifications` | O e-mail do cliente vem do customer-service; o link de pagamento sai pelo mesmo tópico. |
+| E-mail de mudança de status | 2 | 🔄 | Tópico `workbench-os-notifications` | O e-mail do cliente vem do customer-service; o link de pagamento, a confirmação e a recusa de pagamento saem pelo mesmo canal. No SNS só chega ao endereço inscrito; `NOTIFICATION_CHANNEL=ses` escreve ao cliente (ver [[Variaveis de Ambiente]]). |
 | CRUD de clientes e veículos | 1 | 🔄 | customer-service | Cliente só lê o próprio cadastro; veículo sempre ligado a um cliente. |
 | CRUD de serviços e execução | 1 | 🔄 | os-service `/service-types` + `/order/{id}/services` | Cada serviço da OS vai de `TO_DO` a `DONE`; o último `DONE` finaliza a OS. |
 | CRUD de peças e insumos com estoque | 1 | 🔄 | execution-service `/api/products` + `/api/stocks` ([[Reserva de Estoque]]) | Catálogo único; reserva, baixa, liberação e estoque mínimo. |
@@ -180,8 +180,8 @@ graph LR
 
 | Requisito | Fase | Hoje | Onde está | O que mudou |
 |---|---|---|---|---|
-| Testes unitários e de integração | 1, 2, 4 | ✅ | `src/test` de cada serviço ([[Rodando Testes]]) | 455 testes, 0 falhas (15/11/2026): os 232, billing 71, customer 81, execution 71. |
-| Cobertura ≥ 80% | 1, 4 | ✅ | Gate JaCoCo no `verify` | Linhas em 15/11/2026: os 89,8%, execution 89,0%, customer 87,0%, billing 85,8%. |
+| Testes unitários e de integração | 1, 2, 4 | ✅ | `src/test` de cada serviço ([[Rodando Testes]]) | 492 testes, 0 falhas (15/11/2026): os 255, billing 85, customer 81, execution 71. |
+| Cobertura ≥ 80% | 1, 4 | ✅ | Gate JaCoCo no `verify` | Linhas em 15/11/2026: os 91,1%, execution 89,0%, customer 87,0%, billing 87,2%. |
 | BDD | 4 | ✅ | `ordem_servico.feature` (os-service) | Fluxo feliz, recusa e transição inválida. |
 | Sonar no CI | 4 | ✅ | Job `code-analysis` ([[SonarQube]]) | Entrou na Fase 4. |
 | Testes de contrato | 4 (extra) | ✅ | `*SagaContractTest` nos 3 serviços da Saga | O CI compara a cópia de cada serviço com o contrato do `workbench-messaging`. |

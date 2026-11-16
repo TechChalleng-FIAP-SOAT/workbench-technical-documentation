@@ -69,8 +69,9 @@ aliases:
   { "gatewayPaymentId": "0c5e...-1", "approved": true }
   ```
 - Recusa → `PagamentoFalhou`; o cliente pode pedir nova cobrança em
-  `POST /order/{id}/payment-retry`. Compensação depois de pago (falha na entrega) gera
-  estorno (`POST /v1/payments/{id}/refunds` no Mercado Pago) → `ESTORNADO`.
+  `POST /order/{id}/payment-retry`. O billing implementa o estorno
+  (`POST /v1/payments/{id}/refunds` no Mercado Pago) → `ESTORNADO`, mas **nenhum fluxo do os-service
+  o dispara hoje** (o comando `ComandoEstornarPagamento` existe no contrato e ainda não é enviado).
 
 ---
 

@@ -22,7 +22,7 @@ Os bounded contexts do Event Storming viraram os limites dos microsserviços.
 | | `Vehicle` | `LicensePlate`, `VehicleType` | placa antiga ou Mercosul; vinculado a um cliente |
 | | `User` | `Role` | e-mail único; senha BCrypt; bloqueio após 5 erros |
 | **Faturamento** (billing) | `Budget` | `BudgetItem` (PART/SUPPLY/LABOR) | um por OS; totais derivados dos itens |
-| | `Payment` | `PaymentHistory`, `PaymentStatus` | valor > 0; transições PENDENTE → APROVADO/RECUSADO → ESTORNADO |
+| | `Payment` | `PaymentHistory`, `PaymentStatus` | valor > 0; transições PENDENTE → APROVADO/RECUSADO → ESTORNADO (estorno ainda sem gatilho no os-service) |
 | **Execução** (execution) | `Product` | `ProductType`, `UnitOfMeasure` | SKU único; preço ≥ 0 |
 | | `Stock` | `StockMovement`, `StockReservation` | disponível = quantidade − reservado; reserva tudo ou nada |
 

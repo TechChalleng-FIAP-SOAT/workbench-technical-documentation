@@ -78,7 +78,7 @@ graph TB
     BILL -->|publica eventos| TOPICS
     QUEUES -->|respostas da Saga| OS
 
-    BILL -->|cobrança / webhook| MP
+    BILL -->|cobrança / consulta de pagamento| MP
 ```
 
 **Leitura rápida do diagrama:**
@@ -212,7 +212,7 @@ Há dois estilos de Saga:
   compensações. Mais fácil de entender, auditar e evoluir.
 
 **Escolhemos a Saga ORQUESTRADA**, com o **OS Service** como orquestrador. Justificativa:
-- O fluxo tem **pausas humanas** (aprovação do orçamento, webhook de pagamento) e
+- O fluxo tem **pausas humanas** (aprovação do orçamento, pagamento pelo cliente) e
   ramificações (recusa, falha) — mais simples de coordenar em um ponto central.
 - **Compensação explícita**: o orquestrador sabe exatamente o que desfazer.
 - **Rastreabilidade**: um único lugar guarda "onde a Saga está" (o estado é
@@ -242,7 +242,8 @@ sequenceDiagram
     Note over OS: execução do serviço → FINALIZADA → PAGAMENTO_PENDENTE
     OS->>BI: ComandoCobrarPagamento
     BI->>MP: cria cobrança
-    MP-->>BI: webhook (aprovado)
+    BI->>MP: consulta a cada 30 s
+    MP-->>BI: pagamento aprovado
     BI-->>OS: PagamentoConfirmado
     OS-->>C: OS PAGO → ENTREGUE (veículo liberado)
 ```

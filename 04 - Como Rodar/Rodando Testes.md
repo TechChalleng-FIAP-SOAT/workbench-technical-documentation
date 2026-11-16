@@ -37,12 +37,12 @@ Surefire roda os unitários; failsafe roda os `*IntegrationTest` (e o BDD).
 JaCoCo com **gate de 80% de linhas** no `verify` (o build falha abaixo disso). Relatório em
 `target/site/jacoco/index.html`.
 
-| Serviço | Linhas | Branches | Testes (11/11/2026) |
+| Serviço | Linhas | Branches | Testes (15/11/2026) |
 |---|---|---|---|
-| os-service | 89,8% | 72,0% | 222 |
-| execution-service | 88,7% | 76,5% | 67 |
-| customer-service | 86,6% | 62,8% | 76 |
-| billing-service | 85,6% | 71,9% | 66 |
+| os-service | 91,1% | 75,5% | 255 |
+| execution-service | 89,0% | 78,6% | 71 |
+| customer-service | 87,0% | 64,0% | 81 |
+| billing-service | 87,2% | 72,7% | 85 |
 
 No CI, o job `unit-test` publica o relatório como artefato `jacoco-report` e o job
 `code-analysis` envia a cobertura ao SonarCloud ([[SonarQube]]).

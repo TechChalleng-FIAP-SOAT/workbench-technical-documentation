@@ -478,7 +478,7 @@ Com tudo no ar:
   - `POST /auth` (cliente por CPF) → token CLIENT.
   - Com o token: criar OS → diagnóstico → aprovar → fluxo da Saga.
   - `POST /monitoring/all` → relatório de tempo médio (staff).
-- E-mail de status chegando ao endereço inscrito no tópico de notificações.
+- E-mail de status chegando ao endereço inscrito no tópico de notificações (ou ao cliente, com SES), incluindo o aviso de pagamento não aprovado.
 - Dashboards do Datadog populando (com `DD_VERSION` = tag da imagem).
 - Os serviços **não** respondem pela internet: só pelo gateway. Para mostrar o Swagger de
   um serviço, use `kubectl port-forward -n os-service svc/os-service 8080:8080` e abra

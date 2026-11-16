@@ -181,8 +181,8 @@ infra e documentação.
 ### Billing Service — `workbench-billing-service`
 - **Responsabilidade:** geração do orçamento, cobrança e verificação de pagamento.
 - **Funcionalidades:** gerar orçamento (via comando da Saga); criar cobrança
-  (integração **Mercado Pago**, com adapter fake para dev); webhook de aprovação/
-  recusa; histórico de pagamento.
+  (integração **Mercado Pago**, com adapter fake para dev); **job que consulta** o
+  pagamento a cada 30 s (sem webhook público); estorno; histórico de pagamento.
 - **Banco:** PostgreSQL (`billing`).
 
 ### Execution Service — `workbench-execution-service`
@@ -230,7 +230,8 @@ e cada serviço é **dono exclusivo** do seu banco (nenhum acesso cruzado — AD
   (redrive após N tentativas) para tolerância a falhas.
 - **SNS de notificação (`os-notifications`):** tópico dedicado onde o OS Service
   publica a mensagem de status formatada; uma subscription de e-mail entrega ao
-  cliente (paridade com o monólito).
+  endereço inscrito (paridade com o monólito). O SNS **não** escreve ao cliente: para isso
+  existe o canal opcional **SES** (`NOTIFICATION_CHANNEL=ses`), que envia ao e-mail cadastrado.
 
 > **Regra de ouro:** nenhum serviço lê o banco de outro. Dado alheio = REST ou evento.
 
@@ -258,7 +259,7 @@ Escolhemos a variante **orquestrada**: o **OS Service** é o maestro. Ele manté
 ```
 Criar OS → Diagnóstico → [Saga] Reservar estoque → Gerar orçamento
    → (aprovação humana) → Confirmar reserva (baixa) → Cobrar pagamento
-   → (webhook) → OS PAGA → ENTREGUE
+   → (job consulta o Mercado Pago) → OS PAGA → ENTREGUE
 ```
 
 **Compensações (exemplos):**
@@ -290,7 +291,8 @@ o tamanho do domínio. (Ver ADR-0005.)
   microsserviço valida o JWT por conta própria** (Spring Security + filtro HS256 com o
   mesmo segredo). Assim as chamadas internas (serviço→serviço) também exigem token, não
   só as que entram pelo gateway. Rotas públicas por serviço: health/Swagger; billing
-  `POST /api/payments/webhook` (gateway de pagamento externo); customer
+  `POST /api/payments/webhook` (**só com o provider `fake`, local**: com o Mercado Pago real a rota
+  não existe); customer
   `POST /api/users/auth/validate` (usado pela Lambda) — `signup` exige ADMIN.
 - **Token de serviço:** nas chamadas internas (ex.: os-service → customer-service), o
   chamador emite um **JWT de serviço** (staff, curta duração) com o segredo
@@ -330,8 +332,8 @@ Visão de ponta a ponta, do ponto de vista de quem usa:
 - Login por CPF → token CLIENT.
 - Consultar o histórico das próprias OS.
 - **Aprovar ou recusar** o orçamento da própria OS (ownership garantido).
-- Receber **e-mail** a cada mudança de status da OS.
-- Receber por **e-mail o link de pagamento** (checkout) quando a cobrança é criada;
+- Receber **e-mail** nas mudanças de status feitas pela API (criação, diagnóstico, atualização, status de serviço) e na entrega, quando o canal SES está ligado.
+- Receber por **e-mail o link de pagamento** (checkout) quando a cobrança é criada, a confirmação ("Entregue") quando o pagamento é aprovado e um aviso quando o pagamento **não é aprovado** (um por recusa);
   consultar o link a qualquer momento em `GET /api/payments/service-order/{osId}`.
 
 **Sistema (automático)**
@@ -339,9 +341,9 @@ Visão de ponta a ponta, do ponto de vista de quem usa:
   liberação de reserva, cobrança e entrega — com compensações.
 - **Cobrança automática:** ao entrar em `PAGAMENTO_PENDENTE`, a Saga cria a cobrança
   no Billing sem ação manual.
-- Integração de pagamento (Mercado Pago) com webhook **idempotente** que confirma o
-  pagamento e avança a OS (`PAGAMENTO_APROVADO` → PAGO → ENTREGUE).
-- Notificação de status e link de pagamento por SNS/e-mail.
+- Integração de pagamento (Mercado Pago): um job **consulta** o pagamento (idempotente) e, ao
+  aprovar, avança a OS (`PAGAMENTO_APROVADO` → PAGO → ENTREGUE).
+- Notificação de status, link de pagamento, confirmação e recusa de pagamento por SNS ou SES.
 - Observabilidade (métricas, logs correlacionados por `saga_id`).
 
 ---

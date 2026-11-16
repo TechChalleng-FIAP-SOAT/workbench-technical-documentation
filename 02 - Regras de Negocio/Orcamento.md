@@ -41,7 +41,9 @@ orçamentos já emitidos.
 
 Ao entrar em `PAGAMENTO_PENDENTE`, o Billing cria a cobrança no Mercado Pago (Checkout Pro) e
 o link vai por e-mail. O `PaymentStatusPollingJob` confirma o pagamento (sem webhook público);
-recusa permite nova cobrança; compensação depois de pago gera estorno.
+recusa permite nova cobrança (e avisa o cliente por e-mail). O billing sabe estornar um pagamento
+aprovado (`ComandoEstornarPagamento`), mas o os-service ainda não envia esse comando: hoje nenhum
+fluxo dispara estorno.
 
 Rotas: [[API - Orcamento]].
 
