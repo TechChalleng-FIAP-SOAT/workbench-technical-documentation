@@ -1,182 +1,62 @@
 ---
-title: SonarQube — Análise de Qualidade
+title: SonarCloud — Qualidade e Cobertura
 tags:
   - qualidade
-  - sonarqube
+  - sonar
   - cobertura
-  - jacoco
 aliases:
-  - Sonar
-  - Code Quality
-  - Análise Estática
+  - SonarQube
+  - SonarCloud
+  - SAST
 ---
 
-# SonarQube — Análise de Qualidade
+# SonarCloud — Qualidade e Cobertura
 
-## O que é o SonarQube?
-
-**SonarQube** é uma plataforma de **SAST** (Static Application Security Testing) e análise de qualidade de código. Analisa o código-fonte em busca de:
-
-- **Bugs** — erros que podem causar comportamento incorreto
-- **Vulnerabilidades** — falhas de segurança no código
-- **Code Smells** — problemas de manutenibilidade
-- **Cobertura de Testes** — % de código coberto por testes
-- **Duplicações** — código repetido
-
----
-
-## Configuração no Projeto
-
-### `pom.xml`
+Cada microsserviço é um projeto no **SonarCloud** (organização `techchalleng-fiap-soat`,
+chave `TechChalleng-FIAP-SOAT_<repositório>`). Configuração no `pom.xml`:
 
 ```xml
-<properties>
-    <sonar.projectKey>workbench-monolith</sonar.projectKey>
-    <sonar.projectName>workbench-monolith</sonar.projectName>
-    <sonar.host.url>http://localhost:9000</sonar.host.url>
-    <sonar.coverage.jacoco.xmlReportPaths>
-        target/site/jacoco/jacoco.xml
-    </sonar.coverage.jacoco.xmlReportPaths>
-</properties>
-
-<plugin>
-    <groupId>org.sonarsource.scanner.maven</groupId>
-    <artifactId>sonar-maven-plugin</artifactId>
-    <version>5.5.0.6356</version>
-</plugin>
+<sonar.organization>techchalleng-fiap-soat</sonar.organization>
+<sonar.projectKey>TechChalleng-FIAP-SOAT_workbench-os-service</sonar.projectKey>
+<sonar.host.url>https://sonarcloud.io</sonar.host.url>
+<sonar.coverage.jacoco.xmlReportPaths>target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
 ```
 
-### JaCoCo (Gerador de Relatório de Cobertura)
+## No pipeline
 
-```xml
-<plugin>
-    <groupId>org.jacoco</groupId>
-    <artifactId>jacoco-maven-plugin</artifactId>
-    <version>0.8.14</version>
-    <executions>
-        <execution>
-            <goals><goal>prepare-agent</goal></goals>
-        </execution>
-        <execution>
-            <id>report</id>
-            <phase>test</phase>
-            <goals><goal>report</goal></goals>
-        </execution>
-    </executions>
-</plugin>
+```mermaid
+graph LR
+    ut[unit-test<br/>mvn verify + jacoco-report] --> ca[code-analysis<br/>mvn verify sonar:sonar] --> b[build] --> d[docker-build-push] --> aws[deploy-aws]
 ```
 
----
+- `unit-test`: confere a cópia do contrato da Saga, roda `mvn verify` (unit, integração,
+  contrato, BDD) e publica o JaCoCo como artefato `jacoco-report`. É o **check obrigatório**
+  da branch protection da `main`.
+- `code-analysis`: `mvn verify sonar:sonar` com o secret `SONAR_TOKEN` (sem o secret, roda só o
+  gate de cobertura e avisa). O Quality Gate do Sonar aparece no PR.
 
-## Como Rodar a Análise
+## Gates
 
-### Passo 1: Garantir que o SonarQube está rodando
-```bash
-docker compose up -d sonarqube
-# Aguardar ~2 minutos para inicializar
-# Acesse: http://localhost:9000
-```
-
-### Passo 2: Rodar testes + análise
-```bash
-# Gera cobertura (JaCoCo) + envia para SonarQube
-./mvnw clean verify sonar:sonar
-```
-
-### Passo 3: Ver resultados
-Acesse `http://localhost:9000` → projeto `workbench-monolith`
-
----
-
-## Credenciais Padrão do SonarQube
-
-| Campo | Valor |
-|---|---|
-| URL | `http://localhost:9000` |
-| Usuário | `admin` |
-| Senha inicial | `admin` |
-
-> [!warning] Altere a senha no primeiro acesso
-> O SonarQube solicita troca de senha no login inicial.
-
----
-
-## Autenticação com Token (Opcional)
-
-Para ambientes CI/CD, crie um token de autenticação:
-
-1. `http://localhost:9000` → My Account → Security → Generate Token
-2. Use o token:
-```bash
-./mvnw sonar:sonar -Dsonar.token=squ_xxxxxxxxxxxx
-```
-
----
-
-## Métricas Monitoradas
-
-| Métrica | Descrição | Meta Sugerida |
+| Gate | Onde | Regra |
 |---|---|---|
-| **Coverage** | % de linhas cobertas por testes | ≥ 70% |
-| **Duplications** | % de código duplicado | ≤ 3% |
-| **Reliability Rating** | Severidade dos bugs (A-E) | A |
-| **Security Rating** | Severidade das vulnerabilidades (A-E) | A |
-| **Maintainability Rating** | Technical debt ratio (A-E) | A |
-| **Lines of Code** | Total de linhas | — |
+| Cobertura de linhas | JaCoCo `check` no `verify` | **≥ 80%** — abaixo disso o build falha |
+| Quality Gate | SonarCloud | gate padrão "Sonar way" (bugs, vulnerabilidades, code smells, duplicação e cobertura no código novo) |
 
----
+Cobertura atual: os 90,9% · execution 89,3% · customer 86,4% · billing 86,7% — ver
+[[Rodando Testes]].
 
-## Quality Gate
+## Complementos de segurança
 
-O Quality Gate define se o projeto passa ou falha na análise:
+O Sonar é o **SAST**. DAST (OWASP ZAP) e SCA (Trivy) estão em
+[[Relatorio de Vulnerabilidades - Fase 4]].
 
-**Condições padrão do Quality Gate "Sonar Way":**
-- Coverage em código novo ≥ 80%
-- Duplicação em código novo ≤ 3%
-- Reliability Rating = A
-- Security Rating = A
-- Maintainability Rating = A
-
-> [!info] Branches no SonarQube
-> O projeto tem branches `feature/sonarqube` e `feature-sonar-docker` no git, indicando que a integração com SonarQube foi desenvolvida incrementalmente.
-
----
-
-## Integração no Docker Compose
-
-```yaml
-sonarqube:
-  image: sonarqube:community
-  ports:
-    - "9000:9000"
-  environment:
-    SONAR_JDBC_URL: jdbc:postgresql://sonarqube_db:5432/sonar
-    SONAR_JDBC_USERNAME: sonar
-    SONAR_JDBC_PASSWORD: sonar
-  depends_on:
-    sonarqube_db:
-      condition: service_healthy
-```
-
-> [!warning] SonarQube e Memória
-> O SonarQube Community requer ~2GB de RAM. Em máquinas com menos de 8GB, considere subir apenas quando for analisar.
-
----
-
-## Relatório Local JaCoCo (Sem SonarQube)
-
-Para ver a cobertura sem o SonarQube:
+## Rodar a análise local
 
 ```bash
-./mvnw test jacoco:report
-# Abra no browser:
-open target/site/jacoco/index.html
+./mvnw verify sonar:sonar -Dsonar.token=<seu token do SonarCloud>
 ```
-
----
 
 ## Links Relacionados
 - [[Rodando Testes]]
-- [[Docker Compose]]
 - [[OWASP ZAP]]
-- [[Tecnologias]]
+- [[Relatorio de Vulnerabilidades - Fase 4]]

@@ -1,176 +1,84 @@
 ---
-title: Docker Compose — Serviços e Orquestração
+title: Docker Compose
 tags:
   - como-rodar
   - docker
-  - docker-compose
-  - infraestrutura
+  - compose
 aliases:
-  - Docker
-  - Infraestrutura
+  - Compose
+  - docker-compose
 ---
 
-# Docker Compose — Serviços e Orquestração
+# Docker Compose
 
-## Serviços Definidos
+Arquivo principal: `workbench-messaging/docker-compose.dev.yml`. Três níveis, por **profile**:
 
-```mermaid
-graph TD
-    PG[(postgres)] --> APP[app]
-    APP --> VAL[validation]
-    VAL --> SQ_DB[(sonarqube_db)]
-    SQ_DB --> SQ[sonarqube]
-    VAL --> ZAP[zap]
-```
+| Comando | Sobe |
+|---|---|
+| `docker compose -f docker-compose.dev.yml up -d` | **Infra**: LocalStack, 3 Postgres, MongoDB (replica set) |
+| `… --profile app up -d --build` | Infra **+ plataforma**: `messaging-init`, 4 serviços e gateway |
+| `zap/scan-platform.sh` (profile `scan`) | Scan DAST com OWASP ZAP — [[OWASP ZAP]] |
 
-| Serviço | Imagem | Porta | Finalidade |
+## Outros arquivos compose do workspace
+| Arquivo | Sobe | Quando usar |
+|---|---|---|
+| `workbench-messaging/docker-compose.yml` | só o LocalStack (SNS/SQS/STS), porta 4566 | testar o Terraform do messaging isolado |
+| `workbench-monolith/docker-compose.yml` | Postgres, monólito (8080) e o `validation` (25 etapas de API, termina com código 0) | base histórica das fases 1 a 3; perfis `security` (ZAP) e `quality` (SonarQube) são opcionais |
+Os três **disputam portas e nomes de container**: o LocalStack simples e o `dev` usam o mesmo
+`workbench-localstack` (4566), e o monólito ocupa a 8080 do os-service. Rode um por vez
+(`docker compose … down` antes de subir outro).
+## Serviços
+
+| Serviço | Imagem / build | Porta | Depende de |
 |---|---|---|---|
-| `postgres` | postgres:16 | 5432 | Banco de dados principal |
-| `app` | build local | 8080 | Spring Boot API |
-| `validation` | curl/bash | — | Testes funcionais end-to-end |
-| `sonarqube_db` | postgres:16 | — | Banco exclusivo do SonarQube |
-| `sonarqube` | sonarqube:community | 9000 | Análise estática de código |
-| `zap` | zaproxy/zap-stable | — | Scan de segurança DAST |
+| `localstack` | `localstack/localstack:3` (SNS, SQS, STS) | 4566 | — |
+| `os-db`, `billing-db`, `customer-db` | `postgres:16` | 15432, 15433, 15434 | — |
+| `execution-mongo` | `mongo:7` com `--replSet rs0` (transações) | 27017 | — |
+| `messaging-init` | `hashicorp/terraform:1.9.8` — aplica o Terraform do repo no LocalStack e termina | — | localstack |
+| `customer-service` | build `../workbench-customer-service` | 8081 | customer-db |
+| `execution-service` | build `../workbench-execution-service` | 8083 | execution-mongo, messaging-init |
+| `billing-service` | build `../workbench-billing-service` | 8082 | billing-db, messaging-init |
+| `os-service` | build `../workbench-os-service` | 8080 | os-db, messaging-init, customer-service |
+| `gateway` | `nginx:1.27-alpine` + `local-gateway/nginx.conf` | 8000 | os, billing, execution |
 
-> [!info] App Comentado por Padrão
-> O serviço `app` está comentado no `docker-compose.yml`. A aplicação é rodada localmente via `./mvnw spring-boot:run` para agilizar o ciclo de desenvolvimento (sem rebuild de imagem Docker a cada alteração).
+Todos os serviços têm healthcheck em `/actuator/health` e `depends_on` com
+`service_healthy` / `service_completed_successfully`, então a ordem de subida é garantida.
 
----
+## Decisões
 
-## Ordem de Inicialização
+- **Mesma topologia da AWS:** as filas, tópicos e DLQs vêm do mesmo Terraform
+  (`main.tf`) usado no deploy — não há script paralelo que possa divergir.
+- **Gateway local = API Gateway:** `/api/clients|vehicles|users` → customer,
+  `/api/budgets|payments` → billing, `/api/products|stocks` → execution, o resto → os. O
+  nginx não valida o JWT (na AWS isso é a Lambda authorizer), mas cada serviço valida.
+- **Mongo com `directConnection=true`:** o replica set de 1 nó anuncia o hostname do container;
+  conectar direto no primário evita depender desse nome.
+- **Logs JSON** de cada serviço em `${WORKBENCH_LOG_DIR:-/tmp/workbench}` no host, para o
+  Datadog Agent local coletar.
+- **Pagamento:** `PAYMENT_PROVIDER=fake` por padrão (só sobe no perfil `local`, ver abaixo); para o sandbox do Mercado Pago exporte
+  `PAYMENT_PROVIDER=mercadopago` e `MP_ACCESS_TOKEN=<Access Token de teste, APP_USR-…>` antes do `up`.
+- **Perfil `local`:** o compose define `SPRING_PROFILES_ACTIVE=local` nos 4 serviços. É ele
+  que libera os valores de desenvolvimento (segredo do JWT, pagamento simulado, admin com
+  `admin123`); fora dele os segredos são obrigatórios.
+- **Containers como os pods do EKS:** usuário não-root (UID 10001), sistema de arquivos
+  somente leitura com só `/tmp` gravável, sem capabilities (`cap_drop: ALL`) e
+  `no-new-privileges`. Se um serviço tentar gravar fora de `/tmp`, o erro aparece aqui,
+  antes de chegar ao cluster.
 
-```
-1. postgres         → sobe o banco
-2. app              → aguarda postgres estar saudável
-3. validation       → aguarda app responder
-4. sonarqube_db     → aguarda validation completar com sucesso
-5. sonarqube        → aguarda sonarqube_db
-6. zap              → aguarda validation completar com sucesso
-```
-
-A condição `condition: service_completed_successfully` garante que o SonarQube e ZAP só rodam se a validação funcional passar.
-
----
-
-## Comandos Essenciais
+- **Trava do `fake`:** o billing recusa iniciar com `PAYMENT_PROVIDER=fake` fora do perfil `local`
+  (`FakeProviderGuard`), porque o webhook simulado não tem assinatura. O compose já ativa `local`.
+## Teste ponta a ponta
+Com `--profile app` no ar, `workbench-messaging/e2e/saga-e2e.sh` percorre a plataforma pelo
+gateway (caminho feliz, falta de estoque, pagamento recusado, 401/403) — ver [[Rodando Testes]].
+## Comandos úteis
 
 ```bash
-# Subir tudo em background
-docker compose up -d
-
-# Subir apenas o banco (desenvolvimento local)
-docker compose up -d postgres
-
-# Ver logs de um serviço
-docker compose logs -f postgres
-docker compose logs -f app
-
-# Parar tudo
-docker compose down
-
-# Parar e remover volumes (reset completo)
-docker compose down -v
-
-# Rebuild da imagem do app
-docker compose build app
-
-# Verificar status dos serviços
-docker compose ps
+docker compose -f docker-compose.dev.yml --profile app logs -f os-service
+docker compose -f docker-compose.dev.yml --profile app up -d --build billing-service   # rebuild de um
+docker compose -f docker-compose.dev.yml --profile app down -v                         # zera tudo
 ```
-
----
-
-## PostgreSQL (Banco Principal)
-
-```yaml
-postgres:
-  image: postgres:16
-  environment:
-    POSTGRES_DB: workshop
-    POSTGRES_USER: user
-    POSTGRES_PASSWORD: password
-  ports:
-    - "5432:5432"
-  volumes:
-    - ./init.sh:/docker-entrypoint-initdb.d/init.sh
-```
-
-O script `init.sh` é executado **automaticamente** na primeira vez que o container sobe. Ele:
-1. Cria o schema do banco (todas as tabelas)
-2. Insere dados de teste (3 clientes, veículos, peças, estoque inicial)
-
-> [!warning] Idempotência
-> O `init.sh` usa `INSERT ... ON CONFLICT DO NOTHING`. Pode ser re-executado sem duplicar dados.
-
----
-
-## SonarQube
-
-Comando para rodar o SonarQube:
-```
-docker compose --profile quality up
-```
-
-OBS: Antes de executar o profile security, é recomendado limpar os containeres e volumes antigos usuando o seguinte comando:
-```
-docker system prune -a --volumes -f
-```
-
-Acessível em `http://localhost:9000` após subir.
-
-**Credenciais padrão:** `admin` / `admin` (altere no primeiro acesso)
-
-Para rodar a análise:
-```bash
-./mvnw sonar:sonar
-```
-
----
-
-## OWASP ZAP
-
-Comando para rodar o OWASP ZAP:
-```
-docker compose --profile security up
-```
-
-OBS: Antes de executar o profile security, é recomendado limpar os containeres e volumes antigos usuando o seguinte comando:
-```
-docker system prune -a --volumes -f
-```
-
-O ZAP roda como serviço no Docker Compose após a validação. Os relatórios são salvos em:
-```
-./zap-reports/
-├── zap-report.html   ← relatório visual
-├── zap-report.json   ← dados para CI/CD
-└── zap-scan.log      ← log de execução
-```
-
----
-
-## Dockerfile (Multi-Stage Build)
-
-```dockerfile
-# Stage 1: Build
-FROM maven:3.9-eclipse-temurin-21 AS builder
-WORKDIR /app
-COPY pom.xml .
-RUN mvn dependency:go-offline    # cache de dependências
-COPY src ./src
-RUN mvn clean package -DskipTests
-
-# Stage 2: Runtime
-FROM eclipse-temurin:21-jre-alpine
-WORKDIR /app
-COPY --from=builder /app/target/*.jar app.jar
-ENTRYPOINT ["java", "-jar", "app.jar"]
-```
-
----
 
 ## Links Relacionados
 - [[Quickstart]]
-- [[SonarQube]]
-- [[OWASP ZAP]]
 - [[Configuracao Docker]]
+- [[Variaveis de Ambiente]]

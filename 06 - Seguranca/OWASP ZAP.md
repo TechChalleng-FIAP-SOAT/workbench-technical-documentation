@@ -11,174 +11,74 @@ aliases:
   - Security Scan
 ---
 
-# OWASP ZAP — Scan de Segurança
+# OWASP ZAP — Scan de Segurança (DAST)
 
-## O que é o OWASP ZAP?
+O **OWASP ZAP** testa a API **em execução**, mandando payloads de ataque (injeção, XSS,
+path traversal, Spring4Shell…) para cada rota. É o complemento do **SAST** (SonarCloud, que
+lê o código) e do **SCA** (Trivy, que olha as dependências) — ver
+[[Relatorio de Vulnerabilidades - Fase 4]].
 
-**OWASP ZAP** (Zed Attack Proxy) é uma ferramenta de **DAST** (Dynamic Application Security Testing) — testa a segurança da aplicação **enquela está em execução**, simulando ataques reais contra a API.
+> [!info] Fase 1 × Fase 4
+> Na Fase 1 o ZAP rodava contra o monólito (`workbench-monolith/zap`). Na Fase 4 ele roda
+> contra **os 4 microsserviços, atacando pelo gateway** — o mesmo caminho de um cliente real.
 
-> [!info] DAST vs SAST
-> - **SAST** (SonarQube): analisa o código-fonte sem executar
-> - **DAST** (ZAP): executa a aplicação e testa os endpoints com payloads maliciosos
+## Como está montado
 
----
+Tudo em `workbench-messaging`:
 
-## Como está Integrado
-
-O ZAP roda como **serviço Docker** após a validação funcional ser bem-sucedida:
+| Arquivo | Papel |
+|---|---|
+| `docker-compose.dev.yml` → serviço `zap` (profile `scan`) | Imagem `zaproxy/zap-stable:2.16.1`, depende do gateway e dos serviços |
+| `zap/scan-platform.sh` | Roda um container ZAP por serviço e mostra o resumo |
+| `zap/zap-scan.sh` | Para cada serviço: lê a spec OpenAPI direto do container e ataca pelo gateway |
+| `zap/rules.conf` | O que é `FAIL` (bloqueia), `WARN` ou `IGNORE` — cada linha com justificativa |
+| `local-gateway/nginx.conf` | Gateway local com o mesmo roteamento por prefixo do API Gateway da AWS |
 
 ```mermaid
 graph LR
-    validation[validation ✅] --> zap[ZAP Scan]
-    zap --> report[Relatórios HTML + JSON]
+    zap[ZAP] -- "1. GET /v3/api-docs" --> svc[(os / customer / billing / execution)]
+    zap -- "2. ataques (Bearer ADMIN)" --> gw[gateway :8000]
+    gw --> svc
+    zap --> rep[zap-reports/&lt;serviço&gt;/zap-report.html + .json]
 ```
 
-```yaml
-# docker-compose.yml
-zap:
-  image: zaproxy/zap-stable
-  volumes:
-    - ./zap:/zap/wrk
-    - ./zap-reports:/zap/reports
-  command: /zap/wrk/zap-scan.sh
-  depends_on:
-    validation:
-      condition: service_completed_successfully
-```
+- **Token:** o `scan-platform.sh` assina um JWT de ADMIN (RS256, 1 h) com a chave de dev de `dev-keys/` — local
+  não existe a Lambda de login, e assim nenhum token fica fixo no repositório. O ZAP injeta
+  o `Authorization` em toda requisição (replacer).
+- **Alvo:** `-t http://<serviço>:8080/v3/api-docs` (a spec) e `-O http://gateway:8000`
+  (troca o host da spec pelo gateway).
+- **Resultado:** `0` limpo · `1` algum `FAIL` do `rules.conf` · `2` só `WARN` · `3` erro do ZAP.
+  O script só falha (exit 1) com `FAIL` ou erro; `WARN` vai para o relatório.
 
----
-
-## Script do Scan (`zap/zap-scan.sh`)
-
-O script realiza:
+## Rodar
 
 ```bash
-# 1. Aguarda a app estar disponível (HTTP health check)
-until curl -s -o /dev/null -w "%{http_code}" "$APP_URL/swagger-ui/index.html" | grep -qE "^[2-5]"; do
-  sleep 2
-done
-
-# 2. Autentica e obtém o JWT
-TOKEN=$(curl -s -X POST "$APP_URL/auth/login" \
-  -H "Content-Type: application/json" \
-  -d "{\"email\":\"$ZAP_AUTH_EMAIL\",\"password\":\"$ZAP_AUTH_PASSWORD\"}" \
-  | jq -r '.token')
-
-# 3. Executa o scan autenticado contra a spec OpenAPI
-zap-api-scan.py \
-  -t "$APP_URL/v3/api-docs" \
-  -f openapi \
-  -r /zap/reports/zap-report.html \
-  -J /zap/reports/zap-report.json \
-  -c /zap/wrk/rules.conf \
-  -I \
-  --hook=/zap/wrk/add_auth_header.py  # injeta Bearer token em todas as requisições
+cd workbench-messaging
+docker compose -f docker-compose.dev.yml --profile app up -d --build          # plataforma
+zap/scan-platform.sh                     # os 4 serviços, um container ZAP por serviço
+open zap-reports/os-service/zap-report.html
 ```
+Um serviço só: `zap/scan-platform.sh billing-service`. Os relatórios (`zap-reports/`) não
+são versionados.
 
----
+## `rules.conf`
 
-## Variáveis de Ambiente do ZAP
-
-| Variável | Valor Default | Descrição |
-|---|---|---|
-| `APP_URL` | `http://app:8080` | URL da aplicação (nome do serviço Docker) |
-| `ZAP_AUTH_EMAIL` | `superadmin@system.com` | Email para autenticação |
-| `ZAP_AUTH_PASSWORD` | `coxinha123` | Senha para autenticação |
-
----
-
-## Relatórios Gerados
-
-Após o scan, os relatórios são salvos em `./zap-reports/`:
-
-| Arquivo | Formato | Uso |
-|---|---|---|
-| `zap-report.html` | HTML visual | Revisão manual pelos desenvolvedores |
-| `zap-report.json` | JSON | Integração com CI/CD, tracking de vulnerabilidades |
-| `zap-scan.log` | Log de texto | Debug do processo de scan |
-
----
-
-## `rules.conf` — Configuração de Regras
-
-O arquivo `zap/rules.conf` define quais alertas são PASS, WARN ou FAIL:
-
-```
-# Formato: ID_REGRA	NIVEL
-10010	IGNORE   # Cookie Without Secure Flag (dev environment)
-10011	WARN     # Cookie Without HttpOnly Flag
-10015	FAIL     # Incomplete or No Cache-control Header Set
-10096	WARN     # Timestamp Disclosure
-```
-
-**Níveis:**
-| Nível | Significado | Exit Code |
-|---|---|---|
-| `IGNORE` | Ignorado completamente | 0 |
-| `INFO` | Apenas informativo | 0 |
-| `WARN` | Alerta registrado | 1 |
-| `FAIL` | Falha crítica | 2 |
-
----
-
-## Flag `-I` (Info Mode)
-
-O script usa a flag `-I` (informational):
-
-```bash
-zap-api-scan.py -I ...
-```
-
-> [!info] Modo Informacional
-> `-I` faz o script **sempre retornar exit code 0**, independente das vulnerabilidades encontradas. Isso evita que o scan interrompa o pipeline enquanto o projeto ainda está em desenvolvimento.
->
-> Para CI/CD em produção, remova `-I` para que vulnerabilidades críticas (FAIL) bloqueiem o deploy.
-
----
-
-## Categorias de Vulnerabilidades Testadas
-
-O ZAP testa automaticamente contra as vulnerabilidades do OWASP Top 10:
-
-| Categoria | Exemplos de Teste |
+| Nível | Regras |
 |---|---|
-| **Injection** | SQL Injection, Command Injection nos parâmetros |
-| **Broken Auth** | Tokens fracos, sessões não expiradas |
-| **Sensitive Data Exposure** | Dados sensíveis em respostas |
-| **XXE** | XML External Entity nos payloads |
-| **Security Misconfiguration** | Headers de segurança ausentes |
-| **XSS** | Cross-Site Scripting em campos de entrada |
-| **Insecure Deserialization** | Payloads maliciosos em JSON |
-| **Known Vulnerabilities** | Dependências com CVEs conhecidos |
+| `FAIL` | XSS refletido/persistente, SQL Injection, Path Traversal, OS Command Injection, Server Side Code Injection, XXE, Log4Shell, Spring4Shell, SSRF, RCE Spring |
+| `WARN` | CORS (10098) |
+| `IGNORE` | CSRF (API stateless com Bearer), timestamp e Base64 em resposta, aviso de versão do próprio ZAP |
 
----
+## Problemas conhecidos
 
-## Rodar o Scan Manualmente
-
-```bash
-# Via Docker Compose (requer validação prévia)
-docker compose up zap
-
-# Diretamente (aplicação já rodando)
-docker run -v $(pwd)/zap:/zap/wrk -v $(pwd)/zap-reports:/zap/reports \
-  zaproxy/zap-stable /zap/wrk/zap-scan.sh
-```
-
----
-
-## Interpretando o Relatório HTML
-
-O relatório HTML categoriza alertas por risco:
-
-- 🔴 **High** — Vulnerabilidade crítica, corrigir imediatamente
-- 🟠 **Medium** — Vulnerabilidade significativa, corrigir em breve
-- 🟡 **Low** — Vulnerabilidade menor, corrigir quando possível
-- 🔵 **Informational** — Observação de segurança
-
----
+- Vários `zap-api-scan.py` no mesmo container falham de forma intermitente ao subir o segundo
+  daemon (o primeiro deixa `~/.ZAP/.homelock`). Por isso o `scan-platform.sh` usa um container
+  novo por serviço (e o `zap-scan.sh` ainda apaga o lock por garantia).
+- Parâmetros de caminho (`{id}`) entram vazios ou com valor de exemplo — a maior parte dessas
+  chamadas volta 400/404 (alerta informativo 100000), o que é o comportamento esperado.
 
 ## Links Relacionados
+- [[Relatorio de Vulnerabilidades - Fase 4]]
 - [[Spring Security Config]]
 - [[JWT]]
-- [[Docker Compose]]
 - [[SonarQube]]

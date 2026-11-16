@@ -3,105 +3,62 @@ title: API — Monitoramento
 tags:
   - api
   - monitoramento
-  - analytics
+  - metricas
 aliases:
   - Monitoring API
-  - Analytics
 ---
 
 # API — Monitoramento
 
-> [!info] Analytics de Desempenho
-> Endpoints para análise de tempo médio de execução por tipo de serviço. Útil para planejamento de capacidade e identificação de gargalos.
+**Serviço dono:** OS Service (`/monitoring`)
 
-## POST /monitoring/all — Tempo Médio por Tipo de Serviço
+> [!info] Onde chamar
+> - **AWS:** sempre pelo API Gateway — `{{gatewayUrl}}{path}`. O gateway roteia
+>   `/api/clients|vehicles|users` → Customer, `/api/budgets|payments` → Billing,
+>   `/api/products|stocks` → Execution e o resto (`/order`, `/service-types`,
+>   `/monitoring`) → OS Service.
+> - **Local:** `docker compose -f workbench-messaging/docker-compose.dev.yml --profile app up -d --build`
+>   e use o gateway local `http://localhost:8000` (mesmo roteamento) ou o serviço direto:
+>   OS `:8080`, Customer `:8081`, Billing `:8082`, Execution `:8083`.
+> - Todas as rotas abaixo exigem `Authorization: Bearer <jwt>` salvo indicação contrária.
+>   Erros seguem `{"timestamp": "...", "status": 409, "error": "mensagem em português"}`.
 
-Retorna o tempo médio de execução (em minutos) para cada tipo de serviço no período informado.
+Tempo de execução dos serviços, medido do primeiro `DOING` ao primeiro `DONE` de cada
+serviço da OS (ver [[API - Servicos]]). Serviço que ainda não terminou não entra na média.
 
-**Request Body:**
+| Método | Rota | Perfis | Resposta |
+|---|---|---|---|
+| POST | `/monitoring/all` | ADMIN, TECHNICIAN | 200 média por tipo de serviço |
+| POST | `/monitoring/by-id` | ADMIN, TECHNICIAN | 200 tempo de um serviço · 404 |
+
+## POST /monitoring/all
+
 ```json
-{
-  "startDate": "2024-01-01",
-  "endDate": "2024-01-31"
-}
+{ "timeUnit": "MINUTES" }
 ```
+`timeUnit`: `SECONDS`, `MINUTES` ou `HOURS`.
 
-**Response 200:**
+**200**
 ```json
-[
-  {
-    "serviceTypeId": "uuid",
-    "serviceTypeName": "Freios",
-    "averageExecutionTimeMinutes": 120,
-    "totalServices": 15
-  },
-  {
-    "serviceTypeId": "uuid",
-    "serviceTypeName": "Motor",
-    "averageExecutionTimeMinutes": 240,
-    "totalServices": 8
-  }
-]
+[ { "serviceTypeName": "TROCA_OLEO", "averageTime": 42.5 },
+  { "serviceTypeName": "ALINHAMENTO", "averageTime": 30.0 } ]
 ```
 
----
+## POST /monitoring/by-id
 
-## POST /monitoring/by-id — Tempo Médio de um Tipo Específico
-
-Retorna o tempo médio de execução para um tipo de serviço específico.
-
-**Request Body:**
 ```json
-{
-  "serviceTypeId": "uuid-do-tipo",
-  "startDate": "2024-01-01",
-  "endDate": "2024-01-31"
-}
+{ "id": "e2a4...", "timeUnit": "MINUTES" }
 ```
+`id` é o **serviço da OS** (o `id` de `GET /order/{id}/services`).
 
-**Response 200:**
-```json
-{
-  "serviceTypeId": "uuid",
-  "serviceTypeName": "Freios",
-  "averageExecutionTimeMinutes": 120,
-  "totalServices": 15
-}
-```
+**200** `{ "serviceTypeName": "TROCA_OLEO", "averageTime": 41.0 }`
 
----
-
-## Como é Calculado
-
-O tempo de execução de um serviço é medido entre:
-- `startedAt`: quando o técnico muda o status para `DOING`
-- `completedAt`: quando o técnico muda o status para `DONE`
-
-$$
-\text{tempo\_execução} = \text{completedAt} - \text{startedAt}
-$$
-
-$$
-\text{média} = \frac{\sum \text{tempo\_execução}}{\text{total de serviços}}
-$$
-
-> [!warning] Serviços Incompletos
-> Serviços ainda em `TO_DO` ou `DOING` não são incluídos no cálculo (sem `completedAt`).
-
----
-
-## Domínio: ServiceAverageTime
-
-```
-ServiceAverageTime
-├── serviceTypeId (UUID)
-├── serviceTypeName (String)
-├── averageExecutionTimeMinutes (Long)
-└── totalServices (Integer)
-```
+> [!tip] Observabilidade
+> Além deste relatório, cada serviço publica métricas no Datadog (tempo em cada status
+> da OS, falhas por operação, passos da Saga) — dashboards em `datadog/` de cada repo.
 
 ---
 
 ## Links Relacionados
 - [[API - Servicos]]
-- [[Ciclo de Vida da OS]]
+- [[API - Ordens de Servico]]

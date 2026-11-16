@@ -1,141 +1,44 @@
 ---
-title: Spring Security — Configuração
+title: Spring Security Config
 tags:
   - seguranca
   - spring-security
-  - configuracao
 aliases:
   - SecurityConfig
-  - Filter Chain
 ---
 
-# Spring Security — Configuração
+# Spring Security Config
 
-## Filter Chain
+Cada microsserviço tem a sua `infrastructure/security/SecurityConfig`, com o mesmo esqueleto:
 
-A classe `SecurityConfig.java` define a cadeia de filtros do Spring Security:
+- **Stateless**, CSRF desligado (API com Bearer, sem cookie de sessão).
+- `JwtFilter` antes do `UsernamePasswordAuthenticationFilter` — [[JWT]].
+- **401/403 em JSON** (`JsonSecurityErrorHandler`), formato `{timestamp, status, error}`.
+- **Cabeçalhos:** `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
+  `Cache-Control: no-store`, `Cross-Origin-Resource-Policy: same-origin`,
+  `Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy: require-corp`
+  (testados no `*IntegrationTest` de cada serviço).
+- Públicos em todos: `/actuator/health/**`, `/swagger-ui/**`, `/v3/api-docs/**`.
 
-```java
-@Bean
-public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-    return http
-        // 1. CSRF desabilitado (API stateless com JWT)
-        .csrf(csrf -> csrf.disable())
+## Regras por serviço
 
-        // 2. Sessão stateless (sem HttpSession)
-        .sessionManagement(session ->
-            session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+| Serviço | Público | Cliente (dono) + staff | Só staff (ADMIN/TECHNICIAN) |
+|---|---|---|---|
+| os | — | `GET /order/document/**`, `POST /order/*/decision`, `POST /order/*/payment-retry` | todo o resto |
+| customer | `POST /api/users/auth/validate` (usado pela Lambda) | `GET /api/clients/**`, `GET /api/vehicles/**` | `GET /api/clients` (lista), escrita; `POST /api/users/signup` só **ADMIN** |
+| billing | `POST /api/payments/webhook` (só com `PAYMENT_PROVIDER=fake`, que só sobe no perfil `local`) | `GET /api/budgets/**`, `GET /api/payments/**` | criação manual de cobrança |
+| execution | — | — | tudo |
 
-        // 3. Regras de autorização por endpoint
-        .authorizeHttpRequests(auth -> auth
-            // Públicos
-            .requestMatchers("/auth/**").permitAll()
-            .requestMatchers("/swagger-ui.html", "/swagger-ui/**").permitAll()
-            .requestMatchers("/v3/api-docs/**").permitAll()
+"Dono" é conferido no caso de uso (`Requester.requireAccessTo`): cliente acessando dado de
+outro → **403**.
 
-            // Portal do cliente
-            .requestMatchers("/api/clients/my-orders/**")
-                .hasAnyRole("USER", "ADMIN", "TECHNICIAN")
+## Erros de requisição
 
-            // Restante: admin ou técnico
-            .anyRequest().hasAnyRole("ADMIN", "TECHNICIAN")
-        )
-
-        // 4. Filtro JWT executado antes do UsernamePasswordAuthenticationFilter
-        .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class)
-
-        .build();
-}
-```
-
----
-
-## Fluxo de uma Requisição Autenticada
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant JwtFilter
-    participant SecurityContext
-    participant Controller
-
-    Client->>JwtFilter: GET /api/clients (Authorization: Bearer xxx)
-    JwtFilter->>JwtFilter: Extrai token do header
-    JwtFilter->>JwtService: validateToken(token)
-    JwtService-->>JwtFilter: Claims válidos
-    JwtFilter->>SecurityContext: setAuthentication(email, roles)
-    JwtFilter->>Controller: passa requisição
-    Controller->>SecurityContext: verifica roles
-    Controller-->>Client: 200 OK
-```
-
----
-
-## `CustomUserDetailsService`
-
-Implementa `UserDetailsService` para carregar usuário do banco por email:
-
-```java
-@Service
-public class CustomUserDetailsService implements UserDetailsService {
-
-    @Override
-    public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
-        return userRepository.findByEmail(email)
-            .map(user -> new org.springframework.security.core.userdetails.User(
-                user.getEmail(),
-                user.getPassword(),
-                user.getRoles().stream()
-                    .map(role -> new SimpleGrantedAuthority(role.getName()))
-                    .toList()
-            ))
-            .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
-    }
-}
-```
-
----
-
-## Password Encoding
-
-Senhas são armazenadas com **BCrypt** (fator de custo 10):
-
-```java
-@Bean
-public PasswordEncoder passwordEncoder() {
-    return new BCryptPasswordEncoder();
-}
-```
-
-> [!info] BCrypt
-> BCrypt inclui salt automático e é projetado para ser lento, dificultando ataques de força bruta. O hash armazenado no banco nunca é igual mesmo para a mesma senha.
-
----
-
-## Headers de Segurança (Spring Security Defaults)
-
-O Spring Security adiciona automaticamente:
-
-| Header | Valor | Proteção |
-|---|---|---|
-| `X-Content-Type-Options` | `nosniff` | Evita MIME sniffing |
-| `X-Frame-Options` | `DENY` | Evita clickjacking |
-| `Cache-Control` | `no-cache, no-store` | Evita cache de respostas sensíveis |
-| `X-XSS-Protection` | `0` | Desabilita XSS auditor (deprecated) |
-
----
-
-## Sobre CSRF Desabilitado
-
-> [!warning] Por que CSRF está desabilitado?
-> CSRF é uma vulnerabilidade que afeta aplicações que usam **cookies** para autenticação (onde o browser envia cookies automaticamente em requisições cross-site).
->
-> Esta API usa **JWT no header `Authorization`** — o browser não envia headers customizados automaticamente em requisições cross-site. Portanto, CSRF não é aplicável e desabilitá-lo é correto.
-
----
+O `GlobalExceptionHandler` de cada serviço responde 400 para UUID/JSON inválido, 404, 409
+(conflito/duplicado), 422 (regra de negócio) e 500 genérico sem vazar detalhe interno — ver
+[[Relatorio de Vulnerabilidades - Fase 4]].
 
 ## Links Relacionados
 - [[JWT]]
-- [[Autorizacao e Roles]]
 - [[OWASP ZAP]]
-- [[API - Autenticacao]]
+- [[Autorizacao e Roles]]

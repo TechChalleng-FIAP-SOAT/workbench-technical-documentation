@@ -3,121 +3,95 @@ title: Variáveis de Ambiente
 tags:
   - ambientes
   - configuracao
-  - env
+  - variaveis
 aliases:
-  - Environment Variables
-  - Envs
+  - Env Vars
+  - Variáveis
 ---
 
 # Variáveis de Ambiente
 
-## Referência Completa
+Na AWS, os valores vêm do `k8s/configmap.yaml` e dos Secrets de cada serviço (injetados pelo
+CD a partir dos GitHub Secrets).
 
-| Variável | Padrão | Descrição | Obrigatória em Prod? |
-|---|---|---|---|
-| `DB_URL` | `jdbc:postgresql://localhost:5432/workshop` | URL de conexão com o banco | Sim |
-| `DB_USERNAME` | `user` | Usuário do banco de dados | Sim |
-| `DB_PASSWORD` | `password` | Senha do banco de dados | Sim |
-| `JWT_SECRET` | `akmsdkmasfnjsgknakmsdkmasdkmsadfkmdsakmdkmsadsa` | Chave secreta para assinar os tokens JWT | **Sim — altere obrigatoriamente** |
-| `JWT_EXPIRATION` | `86400000` | Duração do token em milissegundos (padrão: 24h) | Não |
-| `SERVER_PORT` | `8080` | Porta da aplicação | Não |
+> [!warning] Segredos não têm valor padrão
+> `JWT_PUBLIC_KEY`, `SPRING_DATASOURCE_PASSWORD`, `PAYMENT_PROVIDER` (billing) e
+> `ADMIN_INITIAL_PASSWORD` (customer) são obrigatórios: sem eles o serviço não sobe. Os valores
+> de desenvolvimento ficam no perfil `local` (`application-local.yml` de cada serviço), que o
+> compose do `workbench-messaging` ativa com `SPRING_PROFILES_ACTIVE=local`. Rodando pela IDE
+> ou pelo Maven: `./mvnw spring-boot:run -Dspring-boot.run.profiles=local`.
 
----
+## Comuns a todos os serviços
 
-## Configuração no `application.yml`
-
-```yaml
-spring:
-  datasource:
-    url: ${DB_URL:jdbc:postgresql://localhost:5432/workshop}
-    username: ${DB_USERNAME:user}
-    password: ${DB_PASSWORD:password}
-  jpa:
-    hibernate:
-      ddl-auto: update
-    packages-to-scan: com.os
-    properties:
-      hibernate:
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-        format_sql: true
-
-server:
-  port: ${SERVER_PORT:8080}
-
-jwt:
-  secret: ${JWT_SECRET:akmsdkmasfnjsgknakmsdkmasdkmsadfkmdsakmdkmsadsa}
-  expiration: ${JWT_EXPIRATION:86400000}
-```
-
-> [!info] Sintaxe `${VAR:default}`
-> Spring Boot usa `${NOME_VARIAVEL:valor_padrão}`. Se a variável de ambiente não estiver definida, o valor após `:` é usado. Isso permite rodar localmente sem definir nenhuma variável.
-
----
-
-## Por Ambiente
-
-### Desenvolvimento Local
-Nenhuma variável precisa ser definida — os valores padrão funcionam com o Docker Compose local.
-
-### Docker Compose
-O `docker-compose.yml` define as variáveis no serviço `app`:
-```yaml
-app:
-  environment:
-    - DB_URL=jdbc:postgresql://postgres:5432/workshop
-    - DB_USERNAME=user
-    - DB_PASSWORD=password
-    - JWT_SECRET=meu-segredo-docker
-    - JWT_EXPIRATION=86400000
-```
-
-> [!warning] `localhost` vs nome do serviço
-> Em Docker Compose, use o **nome do serviço** (`postgres`) como host, não `localhost`. Containers se comunicam pela rede interna do Docker.
-
-### Produção
-```bash
-export DB_URL=jdbc:postgresql://prod-db.host:5432/workshop
-export DB_USERNAME=prod_user
-export DB_PASSWORD=SenhaForte123!
-export JWT_SECRET=$(openssl rand -base64 64)  # gera segredo aleatório
-export JWT_EXPIRATION=28800000  # 8 horas (mais seguro)
-```
-
----
-
-## Sobre o JWT_SECRET
-
-> [!danger] Nunca use o segredo padrão em produção
-> O segredo padrão `akmsdkmasfnjsgknakmsdkmasdkmsadfkmdsakmdkmsadsa` é público (está no código). Qualquer pessoa pode forjar tokens com ele.
-
-**Gere um segredo seguro:**
-```bash
-# Linux/Mac
-openssl rand -base64 64
-
-# Node.js
-node -e "console.log(require('crypto').randomBytes(64).toString('base64'))"
-```
-
-**Requisitos:** mínimo 256 bits (32 bytes) para HS256.
-
----
-
-## `ddl-auto` por Ambiente
-
-| Ambiente | Valor Recomendado | Motivo |
+| Variável | Default | Descrição |
 |---|---|---|
-| Desenvolvimento | `update` | Atualiza schema automaticamente |
-| Testes | `create-drop` | Recria a cada execução |
-| Produção | `validate` | Não altera o schema; valida apenas |
+| `SERVER_PORT` | `8080` | Porta HTTP |
+| `JWT_PUBLIC_KEY` | — (em dev: `.env` do compose, gerado por `scripts/dev-keys.sh`) | Chave **pública** RS256 da Lambda de login — a mesma em todos os serviços e no authorizer |
+| `JWT_SERVICE_PRIVATE_KEY` | — (só os-service; dev no perfil `local`) | Assina o token de serviço das chamadas ao customer |
+| `JWT_SERVICE_PUBLIC_KEY` | — (só customer; dev no perfil `local`) | Aceita o token de serviço do os-service |
+| `SPRING_PROFILES_ACTIVE` | — | `local` libera os valores de desenvolvimento |
+| `SCHEDULING_POOL_SIZE` | `4` | Threads dos jobs `@Scheduled` (os, billing, execution) |
+| `LOG_JSON_FILE` | `/tmp/workbench/<serviço>.log` | Arquivo de log JSON (coletado pelo Datadog Agent) |
+| `DD_SERVICE` / `DD_ENV` / `DD_VERSION` | nome do serviço / `local` / `local` | Tags do Datadog (logs e métricas) |
+| `DD_METRICS_ENABLED` | `false` | Liga o envio de métricas Micrometer → Datadog |
+| `DD_API_KEY` / `DD_METRICS_URI` | — / `https://api.datadoghq.com` | Credencial e endpoint do Datadog |
 
-> [!danger] `ddl-auto: update` em Produção
-> Nunca use `update` em produção — pode alterar o schema de forma inesperada. Use migrations (Flyway/Liquibase) para gerenciar o schema em produção.
+## Banco
 
----
+| Serviço | Variáveis | Default |
+|---|---|---|
+| os | `SPRING_DATASOURCE_URL`, `_USERNAME`, `_PASSWORD` | `jdbc:postgresql://localhost:15432/os_service`, `dbadmin`; senha sem padrão (dev no perfil `local`) |
+| billing | idem | `jdbc:postgresql://localhost:15433/billing` |
+| customer | idem | `jdbc:postgresql://localhost:15434/customer` |
+| execution | `MONGODB_URI` | `mongodb://localhost:27017/execution` (na AWS, a URI `mongodb+srv://` do Atlas) |
+
+## Mensageria (os, billing, execution)
+
+| Variável | Default | Descrição |
+|---|---|---|
+| `MESSAGING_ENABLED` | `false` | Liga publicação/consumo SNS/SQS (sem ela a Saga não anda) |
+| `AWS_REGION` | `us-east-1` | Região |
+| `AWS_ENDPOINT` | — | `http://localhost:4566` (ou `http://localstack:4566` no compose); vazio na AWS |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | — | `test`/`test` no LocalStack; na AWS, credencial do pod |
+| `ORDER_EVENTS_TOPIC_ARN`, `SAGA_REPLIES_QUEUE_URL`, `NOTIFICATIONS_TOPIC_ARN` | — | os-service |
+| `BILLING_EVENTS_TOPIC_ARN`, `BILLING_COMMANDS_QUEUE_URL` | — | billing-service |
+| `EXECUTION_EVENTS_TOPIC_ARN`, `EXECUTION_COMMANDS_QUEUE_URL` | — | execution-service |
+
+No LocalStack: ARN `arn:aws:sns:us-east-1:000000000000:<tópico>` e URL
+`http://<endpoint>:4566/000000000000/<fila>` (nomes no README do `workbench-messaging`).
+
+## Específicas
+
+| Serviço | Variável | Default | Descrição |
+|---|---|---|---|
+| os | `CUSTOMER_VALIDATION_ENABLED` | `false` | Valida cliente/placa no Customer Service ao abrir a OS |
+| os | `CUSTOMER_SERVICE_URL` | — | Base URL do Customer (ex.: `http://customer-service:8080`) |
+| customer | `ADMIN_INITIAL_PASSWORD` | — (obrigatório fora do perfil `local`) | Troca a senha do admin semeado no primeiro start (≥ 8 caracteres); sem ela, com o admin ainda em `admin123`, o serviço não sobe |
+| billing | `PAYMENT_PROVIDER` | — (`fake` no perfil `local`) | `fake` (webhook simulado sem assinatura; só no perfil `local` e nos testes, senão o serviço não sobe) ou `mercadopago` |
+| billing | `MP_CONNECT_TIMEOUT` / `MP_READ_TIMEOUT` | `5s` / `10s` | Timeouts das chamadas ao Mercado Pago |
+| os | `CUSTOMER_CONNECT_TIMEOUT` / `CUSTOMER_READ_TIMEOUT` | `2s` / `5s` | Timeouts das chamadas ao customer-service |
+| os | `NOTIFICATION_CHANNEL` | `sns` | Canal do e-mail ao cliente: `sns` (publica no tópico; chega só ao endereço inscrito) ou `ses` (envia direto ao e-mail cadastrado do cliente) |
+| os | `SES_SENDER_EMAIL` | — | Remetente verificado no SES. **Obrigatório com `NOTIFICATION_CHANNEL=ses`**: sem ele o serviço não sobe. Em sandbox, os destinatários também precisam estar verificados |
+| os | `SES_CONFIGURATION_SET` | — | Configuration set do SES (bounces e reclamações → tópico de alertas). A pipeline usa `workbench-customer-email` quando o SES está ligado |
+| billing | `MP_ACCESS_TOKEN` | — | Access Token do Mercado Pago. Os dois começam com `APP_USR-`: o que define sandbox ou produção é a credencial usada (*Credenciais de teste* × *de produção*), não o prefixo |
+| billing | `MP_BASE_URL` | `https://api.mercadopago.com` | API do Mercado Pago |
+| billing | `MP_NOTIFICATION_URL` | — | Opcional; a confirmação vem do job de consulta |
+| billing | `PAYMENT_POLLING_INTERVAL_MS` | `30000` | Intervalo do job que consulta o pagamento |
+
+> [!note] Removida
+> `JWT_EXPIRATION` não existe mais nos serviços: eles só **validam** tokens. A expiração é
+> definida na Lambda que emite o token.
+
+## Scan de segurança (ZAP)
+- `SERVICE_SCHEME` (padrão `http`) e `GATEWAY_URL`: alvo do `zap/zap-scan.sh` do `workbench-messaging`. Use `SERVICE_SCHEME=https` se o alvo tiver TLS.
+
+## Lambda e gateway
+
+- Lambda: `CUSTOMER_SERVICE_URL`, `JWT_PRIVATE_KEY` (emissores), `JWT_PUBLIC_KEY` (authorizer), `JWT_EXPIRATION` (README do `workbench-lambda`).
+- Gateway (Terraform): `origin_url` (os) e `customer_origin_url`, `billing_origin_url`,
+  `execution_origin_url` (README do `workbench-gateway`).
 
 ## Links Relacionados
 - [[Configuracao Local]]
 - [[Configuracao Docker]]
 - [[JWT]]
-- [[Quickstart]]

@@ -1,87 +1,52 @@
 ---
-title: Geração de Orçamento
+title: Orçamento
 tags:
-  - regras-negocio
+  - regras
   - orcamento
-  - budget
+  - billing
 aliases:
   - Budget
-  - Orçamento Automático
 ---
 
-# Geração de Orçamento
+# Orçamento
 
-## Conceito
+**Dono:** billing-service. Gerado pela Saga, nunca à mão.
 
-O orçamento é **gerado automaticamente** a partir das reservas de estoque ativas para uma OS. Não há endpoint para criar orçamento manualmente — ele é acionado por eventos.
+## Como nasce
 
-> [!info] Event-Driven
-> O orçamento é um reflexo das reservas. Sempre que uma reserva é criada, confirmada ou liberada, o orçamento é recalculado automaticamente via `ReservationChangedEvent`.
+1. Diagnóstico registrado no os-service → `ComandoReservarEstoque` ao Execution.
+2. Execution reserva e responde `ReservaConfirmada` com os itens (nome, SKU, marca, tipo,
+   preço de venda).
+3. os-service envia `ComandoGerarOrcamento` com as **peças** (do Execution) e a **mão de obra**
+   de cada serviço da OS com custo > 0.
+4. Billing grava o `Budget` e publica `OrcamentoGerado` → OS em `AGUARDANDO_APROVACAO`.
 
-## Fórmula de Cálculo
+## Cálculo
 
-$$
-\text{Total da OS} = \sum_{i=1}^{n} (\text{quantidade}_i \times \text{preçoUnitário}_i)
-$$
+| Item | `itemType` | Valor |
+|---|---|---|
+| Peça / insumo | `PART` / `SUPPLY` | `quantidade × preço de venda` (preço copiado no momento) |
+| Mão de obra | `LABOR` | custo do serviço na OS (informado no diagnóstico ou padrão do catálogo — ADR-0005) |
 
-Onde cada $i$ é um item de reserva ativa (`ACTIVE`) vinculado à OS.
+`totalParts` + `totalLabor` = `totalPrice`. Mudar o preço do produto depois não altera
+orçamentos já emitidos.
 
-## Snapshot de Preço
+## Decisão do cliente
 
-> [!warning] Preço Congelado no Momento da Aprovação
-> Quando o orçamento é aprovado pelo cliente, os preços são **capturados (snapshot)** naquele momento. Alterações futuras nos preços dos produtos não afetam o orçamento já aprovado.
+- **Aprovar** → baixa de estoque e OS `APROVADO`.
+- **Recusar** → compensação: reserva liberada, OS `RECUSADA` (pode ter novo diagnóstico).
+- Falha ao gerar o orçamento: reenvio até 3 vezes; depois a reserva é liberada (compensação).
 
-## Domínio
+## Pagamento
 
-### Budget
-```
-Budget
-├── id (UUID)
-├── serviceOrderId (UUID)       ← OS vinculada
-├── totalAmount (BigDecimal)    ← total calculado
-├── status (PENDING/APPROVED)
-└── items: List<BudgetItem>
-```
+Ao entrar em `PAGAMENTO_PENDENTE`, o Billing cria a cobrança no Mercado Pago (Checkout Pro) e
+o link vai por e-mail. O `PaymentStatusPollingJob` confirma o pagamento (sem webhook público);
+recusa permite nova cobrança (e avisa o cliente por e-mail). O billing sabe estornar um pagamento
+aprovado (`ComandoEstornarPagamento`), mas o os-service ainda não envia esse comando: hoje nenhum
+fluxo dispara estorno.
 
-### BudgetItem
-```
-BudgetItem
-├── id (UUID)
-├── budgetId (UUID)
-├── productName (String)        ← nome snapshot
-├── unitPrice (BigDecimal)      ← preço snapshot
-├── quantity (Integer)
-└── subtotal (BigDecimal)       ← unitPrice × quantity
-```
-
-## Fluxo de Geração
-
-```mermaid
-sequenceDiagram
-    participant Stock
-    participant EventBus
-    participant BudgetHandler
-    participant Budget
-
-    Stock->>EventBus: publish ReservationChangedEvent(osId)
-    EventBus->>BudgetHandler: handle(osId)
-    BudgetHandler->>Stock: findReservations(osId, ACTIVE)
-    Stock-->>BudgetHandler: List<StockReservation>
-    BudgetHandler->>Budget: recalculate(reservations)
-    Budget-->>BudgetHandler: Budget atualizado
-```
-
-## Consulta do Orçamento
-
-O orçamento é retornado junto com a OS nas rotas de listagem e detalhe:
-
-- `GET /order/{id}` → inclui orçamento no response
-- `GET /order` → inclui orçamento em cada OS listada
-- `GET /api/budgets/service-order/{serviceOrderId}` → consulta direta
-- `GET /api/clients/my-orders/{orderId}` → portal do cliente (vê orçamento antes de aprovar)
+Rotas: [[API - Orcamento]].
 
 ## Links Relacionados
-- [[Reserva de Estoque]]
 - [[Ciclo de Vida da OS]]
-- [[API - Orcamento]]
-- [[Padroes de Projeto]]
+- [[Reserva de Estoque]]

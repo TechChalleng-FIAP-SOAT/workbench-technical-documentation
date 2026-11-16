@@ -15,8 +15,10 @@ pelo OS Service. Duas categorias:
 - **Comando** (`Comando*`): o orquestrador (OS Service) pede a um serviço que execute algo.
 - **Evento** (`*` no passado): um serviço informa um fato consumado.
 
-> **Idempotência obrigatória**: SQS entrega *at-least-once*. Todo consumidor deve
-> deduplicar por `messageId` + `sagaId`.
+> **Idempotência obrigatória**: SQS entrega *at-least-once*. Todo consumidor precisa
+> aguentar a mesma mensagem duas vezes: os participantes são idempotentes (reservar, baixar,
+> liberar, gerar orçamento e cobrar de novo dão o mesmo resultado) e o orquestrador só aceita
+> cada evento no passo esperado. O dedupe por `messageId` em memória é só uma otimização.
 
 ## Envelope comum
 
@@ -25,7 +27,7 @@ Todas as mensagens compartilham o mesmo envelope:
 ```json
 {
   "messageId": "uuid",         // único por mensagem (dedupe)
-  "sagaId": "uuid",            // correlaciona todos os passos de uma Saga
+  "sagaId": "uuid",            // rodada da Saga (muda a cada novo diagnóstico) — ver abaixo
   "serviceOrderId": "uuid",    // OS alvo
   "type": "ComandoReservarEstoque",
   "occurredAt": "2026-10-02T12:00:00Z",
@@ -33,22 +35,43 @@ Todas as mensagens compartilham o mesmo envelope:
 }
 ```
 
+**`sagaId` = rodada da Saga.** O orquestrador gera um `sagaId` novo a cada início ou novo
+diagnóstico e põe esse valor em todo comando. **O participante devolve o `sagaId` que
+recebeu**; o orquestrador descarta resposta com `sagaId` de outra rodada (reentrega antiga
+do SQS). `PagamentoConfirmado` e `PagamentoFalhou` não respondem a um comando — saem do job
+de consulta ao Mercado Pago ou do webhook simulado —, por isso o billing grava o `sagaId` do
+`ComandoCobrarPagamento` na cobrança e publica o resultado com ele (ADR-0008). Para seguir
+uma OS por todas as rodadas, use `serviceOrderId`.
+
 ## Tabela de contratos
 
-| Tipo | Direção | Emissor → Consumidor | Payload (campos) | Dispara | Compensação |
-|---|---|---|---|---|---|
-| `ComandoReservarEstoque` | Comando | OS → Execution | `items[]: {productId, quantity}` | reserva atômica no estoque | `ComandoLiberarReserva` |
-| `ReservaConfirmada` | Evento | Execution → OS | `reservationIds[]` | OS pede orçamento | — |
-| `ReservaFalhou` | Evento | Execution → OS | `reason`, `missing[]: {productId, faltante}` | aborta Saga | — |
-| `ComandoGerarOrcamento` | Comando | OS → Billing | `reservationIds[]` | gera orçamento (snapshot de preço) | `ComandoCancelarOrcamento` |
-| `OrcamentoGerado` | Evento | Billing → OS | `budgetId`, `totalPrice` | OS → `AGUARDANDO_APROVACAO` | — |
-| `ComandoCobrarPagamento` | Comando | OS → Billing | `budgetId` (após aprovação do cliente) | cria pagamento no Mercado Pago | `ComandoEstornarPagamento` |
-| `PagamentoConfirmado` | Evento | Billing → OS | `paymentId`, `amount` | OS → `EM_EXECUCAO` | — |
-| `PagamentoFalhou` | Evento | Billing → OS | `paymentId`, `reason` | OS dispara compensações | — |
-| `ComandoLiberarReserva` | Comando (comp.) | OS → Execution | `reservationIds[]` | libera reservas ACTIVE | — (idempotente) |
-| `ComandoCancelarOrcamento` | Comando (comp.) | OS → Billing | `budgetId` | cancela orçamento | — (idempotente) |
-| `ComandoEstornarPagamento` | Comando (comp.) | OS → Billing | `paymentId` | estorno no Mercado Pago | — (idempotente) |
-| `OSFinalizada` | Evento | Execution → OS | `serviceOrderId` | OS → `FINALIZADA` | — |
+> **Fonte de verdade executável:** `workbench-messaging/contracts/saga-messages.json`.
+> Cada serviço da Saga tem um teste de contrato (`*SagaContractTest`) que lê uma cópia
+> desse arquivo — se o código divergir da tabela, o `mvn verify` falha. Esta tabela
+> reflete o contrato implementado (versão 1, 28/10/2026).
+
+| Tipo | Emissor → Consumidor | Payload (obrigatórios; *opcionais em itálico*) | Efeito |
+|---|---|---|---|
+| `ComandoReservarEstoque` | OS → Execution | `items[]: {productId, quantity}` | reserva atômica (idempotente por OS) |
+| `ReservaConfirmada` | Execution → OS | `reservations`, `parts[]: {productId, quantity, name, itemType, unitPrice, *sku*, *brand*}` | OS pede orçamento |
+| `ReservaFalhou` | Execution → OS | `reason` | Saga → FALHOU |
+| `ComandoGerarOrcamento` | OS → Billing | `parts[]` (repassa as do Execution), `labor[]: {serviceName, laborCost, *laborCode*}`, `customerDocument` | gera orçamento (snapshot) |
+| `OrcamentoGerado` | Billing → OS | `budgetId`, `totalParts`, `totalLabor`, `totalPrice` | OS → `AGUARDANDO_APROVACAO` |
+| `OrcamentoFalhou` | Billing → OS | `reason` | reenvia até 3×; depois compensa (`ComandoLiberarReserva`) |
+| `ComandoConfirmarReserva` | OS → Execution | — | baixa de estoque (na aprovação) |
+| `ReservaBaixada` | Execution → OS | `reservations` | limpa pendência |
+| `ComandoLiberarReserva` | OS → Execution | — | devolve estoque (recusa/falha) |
+| `ReservaLiberada` | Execution → OS | `reservations` | Saga → FALHOU (compensação concluída) |
+| `ComandoCobrarPagamento` | OS → Billing | — | cria cobrança no Mercado Pago (idempotente) |
+| `CobrancaCriada` | Billing → OS | `gatewayPaymentId`, `checkoutUrl` | e-mail com link de pagamento |
+| `PagamentoConfirmado` | Billing → OS | — | OS → `PAGO` → `ENTREGUE` |
+| `PagamentoFalhou` | Billing → OS | `reason` | OS retida em `PAGAMENTO_PENDENTE` |
+| `ComandoEstornarPagamento` | OS → Billing | — | estorno (*ainda não enviado pelo OS*) |
+| `PagamentoEstornado` | Billing → OS | `status` | (*ainda não tratado pelo OS*) |
+
+> Nomes de mensagem ficam em português por serem **dados do contrato** trafegados entre
+> serviços; no código, as constantes têm nome em inglês (`SagaMessages.RESERVE_STOCK =
+> "ComandoReservarEstoque"`). Cada evento só é aceito no passo da Saga em que é esperado.
 
 ## Pontos de falha e compensações
 
@@ -61,7 +84,9 @@ Todas as mensagens compartilham o mesmo envelope:
 
 ## Regras
 
-- **Dedupe** por (`sagaId`, `type`) ou `messageId` persistido por consumidor.
+- **Repetição e atraso:** o orquestrador aceita cada evento só no passo esperado e só da
+  rodada atual (`sagaId`); os participantes são idempotentes. O dedupe por `messageId` é em
+  memória, por réplica — uma otimização, não a garantia.
 - **DLQ** por fila após N tentativas (sugestão: 3) — mensagens na DLQ exigem inspeção manual.
 - **Estado da Saga** persistido no OS Service (tabela `saga_state`) para sobreviver a quedas.
 - Comandos de compensação são sempre **idempotentes** (liberar reserva já liberada = no-op).

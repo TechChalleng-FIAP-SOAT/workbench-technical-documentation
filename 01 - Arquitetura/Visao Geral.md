@@ -1,78 +1,55 @@
 ---
-title: Visão Geral do Sistema
+title: Visão Geral
 tags:
   - arquitetura
-  - overview
+  - visao-geral
+aliases:
+  - Overview
 ---
 
-# Visão Geral do Sistema
+# Visão Geral
 
-## Propósito
+Sistema de gestão de oficina mecânica (**Workbench**): abertura de OS, diagnóstico, orçamento,
+aprovação pelo cliente, execução, pagamento e entrega, com controle de estoque de peças e
+insumos e monitoramento do tempo de execução.
 
-Sistema de gestão digital para **oficina mecânica**, substituindo planilhas e registros em papel. Gerencia o ciclo completo de uma Ordem de Serviço (OS) desde o recebimento do veículo até a entrega ao cliente.
+## Evolução
 
-## Tipo de Projeto
-
-| Atributo | Valor |
+| Fase | Arquitetura |
 |---|---|
-| Tipo | REST API — Backend Monolítico |
-| Arquitetura | Vertical Slice Architecture (VSA) |
-| Linguagem | Java 21 LTS |
-| Framework | Spring Boot 4.0.5 |
-| Banco de Dados | PostgreSQL 16 |
-| Autenticação | JWT (HS256) |
-| Documentação | Swagger / OpenAPI 3 |
+| 1–2 | Monólito Spring Boot (DDD + hexagonal), PostgreSQL, Kubernetes |
+| 3 | AWS: API Gateway + Lambda de auth, RDS, EKS, Datadog, repositórios separados |
+| **4 (atual)** | **4 microsserviços** + Saga orquestrada por SNS/SQS |
 
-## Arquitetura: Vertical Slice
+Requisito por requisito, com o que mudou de lugar entre as fases: [[Evolucao das Fases]].
+Por que cada escolha (bancos, Saga, mensageria, nuvem): [[Decisoes de Arquitetura]].
 
-Cada **feature** é isolada em sua própria pasta com todos os seus handlers, DTOs e lógica de negócio. Não há dependências cruzadas entre features (exceto shared domain/repository).
+## Microsserviços
 
-```
-features/
-├── user/         [auth]
-├── client/       [clientes]
-├── vehicle/      [veículos]
-├── product/      [peças e suprimentos]
-├── stock/        [estoque e reservas]
-├── serviceorder/ [ordens de serviço]
-├── service/      [serviços dentro da OS]
-├── budget/       [orçamento]
-└── monitoring/   [analytics]
-```
-
-> [!info] Por que VSA?
-> Alta coesão e baixo acoplamento. Cada caso de uso é autocontido: Controller → Handler → Repository. Facilita manutenção e entendimento isolado de cada funcionalidade.
-
-## Fluxo Principal
+| Serviço | Bounded context | Banco | Papel na Saga |
+|---|---|---|---|
+| **os-service** | Ordem de serviço, catálogo de serviços, monitoramento | PostgreSQL | **Orquestrador** |
+| **customer-service** | Clientes, veículos, usuários staff | PostgreSQL | — (consultado por REST) |
+| **billing-service** | Orçamento e pagamento (Mercado Pago) | PostgreSQL | Participante |
+| **execution-service** | Peças/insumos, estoque e reservas | MongoDB | Participante |
 
 ```mermaid
 graph LR
-    A[Cliente chega] --> B[Cria OS]
-    B --> C[Diagnóstico]
-    C --> D[Reserva Estoque]
-    D --> E[Orçamento Gerado]
-    E --> F[Aprovação do Cliente]
-    F --> G[Execução dos Serviços]
-    G --> H[Finalização]
-    H --> I[Entrega]
+    c([Cliente / Staff]) --> gw[API Gateway + Lambda authorizer]
+    gw --> os[os-service] & cu[customer-service] & bi[billing-service] & ex[execution-service]
+    os -- REST --> cu
+    os <-- SNS/SQS --> bi
+    os <-- SNS/SQS --> ex
 ```
 
-## Relacionamentos Entre Features
+- Cada serviço tem **repositório, pipeline e banco próprios**; nenhum lê o banco de outro (ADR-0006).
+- Login pela `workbench-lambda` (cliente por CPF, staff por e-mail/senha); JWT RS256 validado
+  no gateway e em cada serviço.
+- Observabilidade: logs JSON com `saga_id`, métricas e dashboards no Datadog.
 
-```mermaid
-graph TD
-    Client -->|possui| Vehicle
-    Vehicle -->|é associado a| ServiceOrder
-    Client -->|aprova| ServiceOrder
-    ServiceOrder -->|contém| Service
-    Service -->|usa| Stock
-    Stock -->|de| Product
-    Stock -->|gera| StockReservation
-    StockReservation -->|calcula| Budget
-```
+Detalhes: [[Arquitetura e Saga - Visao Completa V2]], [[Arquitetura Alvo Microsservicos]].
 
 ## Links Relacionados
-- [[Estrutura de Pastas]]
 - [[Tecnologias]]
+- [[Estrutura de Pastas]]
 - [[Padroes de Projeto]]
-- [[Ciclo de Vida da OS]]

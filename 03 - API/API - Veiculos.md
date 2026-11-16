@@ -3,102 +3,60 @@ title: API — Veículos
 tags:
   - api
   - veiculos
+  - customer
 aliases:
-  - Endpoints de Veículo
+  - Vehicles API
 ---
 
 # API — Veículos
 
-> [!info] Roles Necessárias
-> Todos os endpoints requerem `ROLE_ADMIN` ou `ROLE_TECHNICIAN`.
+**Serviço dono:** Customer Service (`/api/vehicles`, PostgreSQL)
 
-## POST /api/vehicles — Criar Veículo
+> [!info] Onde chamar
+> - **AWS:** sempre pelo API Gateway — `{{gatewayUrl}}{path}`. O gateway roteia
+>   `/api/clients|vehicles|users` → Customer, `/api/budgets|payments` → Billing,
+>   `/api/products|stocks` → Execution e o resto (`/order`, `/service-types`,
+>   `/monitoring`) → OS Service.
+> - **Local:** `docker compose -f workbench-messaging/docker-compose.dev.yml --profile app up -d --build`
+>   e use o gateway local `http://localhost:8000` (mesmo roteamento) ou o serviço direto:
+>   OS `:8080`, Customer `:8081`, Billing `:8082`, Execution `:8083`.
+> - Todas as rotas abaixo exigem `Authorization: Bearer <jwt>` salvo indicação contrária.
+>   Erros seguem `{"timestamp": "...", "status": 409, "error": "mensagem em português"}`.
 
-Veículo deve ser vinculado a um cliente existente.
+| Método | Rota | Perfis | Resposta |
+|---|---|---|---|
+| POST | `/api/vehicles` | ADMIN, TECHNICIAN | 201 · 404 cliente inexistente · 409 placa já cadastrada |
+| GET | `/api/vehicles/{id}` | staff ou o dono | 200 · 403 · 404 |
+| GET | `/api/vehicles/plate/{plate}` | staff ou o dono | 200 · 403 · 404 |
+| GET | `/api/vehicles/client/{clientId}` | staff ou o dono | 200 lista |
+| PUT | `/api/vehicles/{id}` | ADMIN, TECHNICIAN | 200 · 404 |
+| DELETE | `/api/vehicles/{id}` | ADMIN, TECHNICIAN | 204 (desativa) |
 
-**Request Body:**
+## POST /api/vehicles
+
 ```json
-{
-  "clientId": "uuid-do-cliente",
-  "plate": "ABC-1234",
-  "brand": "Honda",
-  "model": "Civic",
-  "year": 2020,
-  "color": "Prata"
-}
+{ "clientId": 1, "plate": "ABC-1234", "brand": "VW", "model": "Gol", "year": 2018, "color": "Prata", "type": "CAR" }
 ```
+- Obrigatórios: `clientId`, `plate`, `brand`, `model`, `year` (≥ 1886), `type`.
+- `type`: `CAR`, `MOTORCYCLE`, `TRUCK` ou `VAN`.
+- A placa é validada (padrão antigo `ABC-1234` ou Mercosul `ABC1D23`) e devolvida formatada;
+  marca, modelo e cor são gravados em maiúsculas.
 
-**Response 201:**
+**201**
 ```json
-{
-  "id": "uuid",
-  "clientId": "uuid-do-cliente",
-  "plate": "ABC-1234",
-  "brand": "Honda",
-  "model": "Civic",
-  "year": 2020,
-  "color": "Prata",
-  "active": true
-}
+{ "id": 1, "clientId": 1, "plate": "ABC-1234", "brand": "VW", "model": "GOL", "year": 2018, "color": "PRATA",
+  "type": "CAR", "active": true, "createdAt": "...", "updatedAt": "..." }
 ```
 
----
+## PUT /api/vehicles/{id}
 
-## GET /api/vehicles/{id} — Buscar por ID
+Mesmo corpo do POST, sem `clientId` (o veículo não troca de dono).
 
-**Response 200:** objeto veículo | **404:** não encontrado
-
----
-
-## GET /api/vehicles/plate/{plate} — Buscar por Placa
-
-```bash
-GET /api/vehicles/plate/ABC-1234
-```
-
-Útil para identificar rapidamente o veículo na entrada da oficina.
-
----
-
-## GET /api/vehicles/client/{clientId} — Listar Veículos do Cliente
-
-Retorna todos os veículos ativos vinculados ao cliente.
-
-**Response 200:**
-```json
-[
-  { "id": "uuid", "plate": "ABC-1234", "brand": "Honda", "model": "Civic", ... },
-  { "id": "uuid", "plate": "XYZ-5678", "brand": "Toyota", "model": "Corolla", ... }
-]
-```
-
----
-
-## PUT /api/vehicles/{id} — Atualizar Veículo
-
-Permite alterar cor, modelo, ano. **Placa é imutável.**
-
-**Request Body:**
-```json
-{
-  "brand": "Honda",
-  "model": "Civic EX",
-  "year": 2021,
-  "color": "Preto"
-}
-```
-
----
-
-## DELETE /api/vehicles/{id} — Desativar Veículo (Soft Delete)
-
-Marca como `active = false`. **Não remove do banco.**
-
-**Response 204** (sem corpo)
+> [!note] Validação na abertura da OS
+> O OS Service confere, por REST, que a placa existe e pertence ao CPF/CNPJ informado.
 
 ---
 
 ## Links Relacionados
 - [[API - Clientes]]
 - [[API - Ordens de Servico]]
-- [[Dominio DDD]]

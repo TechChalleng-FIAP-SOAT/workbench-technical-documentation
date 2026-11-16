@@ -3,141 +3,48 @@ title: Padrões de Projeto
 tags:
   - arquitetura
   - padroes
-  - ddd
-  - design-patterns
+aliases:
+  - Design Patterns
 ---
 
 # Padrões de Projeto
 
-## Vertical Slice Architecture (VSA)
-
-Toda funcionalidade fica isolada em sua **própria pasta vertical**, incluindo controller, handlers, DTOs e repositório. Nenhuma dependência cruzada entre features (exceto via shared domain).
+## Arquitetura hexagonal (ADR-0004), em cada serviço
 
 ```
-Tradicional (Layered):          VSA:
-controllers/                    features/
-  ClientController               client/
-  VehicleController                ClientController
-services/                          create/  update/  findById/
-  ClientService                    shared/domain/ repository/
-repositories/                   vehicle/
-  ClientRepository                 VehicleController
-                                   ...
+domain/          regras de negócio puras (agregados, value objects, exceções de domínio)
+application/     casos de uso + port/out (interfaces que o caso de uso precisa)
+adapter/in/web   controllers REST + DTOs
+adapter/out      implementações das portas (persistência)
+infrastructure/  config, segurança, mensageria, clientes HTTP, jobs
 ```
+A dependência aponta para dentro: `domain` não conhece Spring nem banco.
 
-> [!tip] Benefício
-> Encontrar e modificar uma feature não exige conhecer o sistema todo — tudo está no mesmo lugar.
+## Convenções de código
 
-## Handler Pattern (Use Case por Classe)
+| Convenção | Como |
+|---|---|
+| **Uma classe por caso de uso** | `CreateServiceTypeUseCase`, `UpdateProductUseCase`… com um método `execute` |
+| **DTOs fora do controller** | `<Recurso>Dtos` (records) ou um arquivo por DTO; o controller só traduz HTTP ↔ caso de uso |
+| **Agregados sem setters** | estado muda por métodos de negócio (`advanceTo`, `moveTo`, `reserve`, `approve`, `replaceDetailsWith`) e fábricas (`create`, `reconstitute`) |
+| **Idioma** | código em inglês; mensagens de erro ao cliente em português |
+| **Erros** | exceções de domínio mapeadas no `GlobalExceptionHandler` (400/404/409/422); catch-all 500 genérico |
 
-Cada **caso de uso** é uma classe isolada com um único método público. O Controller apenas delega.
+## Padrões usados
 
-```java
-// Controller — só delega
-@PostMapping
-public ResponseEntity<CreateClientResponse> create(@RequestBody CreateClientRequest req) {
-    return ResponseEntity.ok(createClientHandler.handle(req));
-}
-
-// Handler — lógica de negócio isolada
-@Component
-public class CreateClientHandler {
-    public CreateClientResponse handle(CreateClientRequest request) { ... }
-}
-```
-
-## Repository Pattern
-
-Repositórios são **interfaces abstratas** no domínio, implementadas por adapters JPA. O domínio não conhece Hibernate ou Spring Data.
-
-```java
-// Porta (domínio)
-interface ClientRepository {
-    Optional<Client> findById(UUID id);
-    void save(Client client);
-}
-
-// Adapter (infra)
-@Repository
-class ClientJpaRepository implements ClientRepository { ... }
-```
-
-## Domain-Driven Design (DDD)
-
-### Aggregate Root
-`Client` é um Aggregate Root com invariantes: nome obrigatório, CPF validado.
-
-```java
-public class Client {
-    // Factory Methods — separa criação de reconstituição
-    public static Client create(String name, Cpf cpf, ...) { ... }
-    public static Client reconstitute(UUID id, String name, ...) { ... }
-}
-```
-
-### Value Object
-`Cpf` encapsula validação do CPF (aceita formatado ou não):
-
-```java
-public record Cpf(String value) {
-    public Cpf {
-        // valida formato e dígitos verificadores
-    }
-}
-```
-
-### Domain Events
-`ReservationChangedEvent` é publicado pelo stock ao confirmar/liberar reserva. O `BudgetRecalculateHandler` ouve e recalcula o orçamento automaticamente.
-
-```java
-// Publicador
-applicationEventPublisher.publishEvent(new ReservationChangedEvent(serviceOrderId));
-
-// Ouvinte
-@EventListener
-public void onReservationChanged(ReservationChangedEvent event) {
-    budgetRecalculateHandler.handle(event.serviceOrderId());
-}
-```
-
-## Soft Delete
-
-Clientes e veículos nunca são deletados fisicamente. Uma flag `active` no banco indica se o registro está ativo.
-
-```sql
--- Não usa DELETE
-UPDATE clients SET active = false WHERE id = ?;
-
--- Queries sempre filtram por active = true
-SELECT * FROM clients WHERE active = true;
-```
-
-## MapStruct — Mapeamento DTO ↔ Entity
-
-MapStruct gera código de mapeamento em compile-time (zero reflection em runtime):
-
-```java
-@Mapper(componentModel = "spring")
-public interface ClientMapper {
-    ClientEntity toEntity(Client domain);
-    Client toDomain(ClientEntity entity);
-}
-```
-
-## Event-Driven Budget
-
-O orçamento **não é calculado manualmente** — ele reage a eventos de reserva de estoque:
-
-```mermaid
-sequenceDiagram
-    Technician->>StockHandler: reserve stock
-    StockHandler->>EventBus: publish ReservationChangedEvent
-    EventBus->>BudgetHandler: onReservationChanged
-    BudgetHandler->>Budget: recalculate totals
-```
+| Padrão | Onde |
+|---|---|
+| **Saga orquestrada** | `SagaOrchestrator` (os-service) com `SagaState` persistido, compensação e reenvio por timeout |
+| **Ports & Adapters** | `*Repository`, `*Port` em `application/.../port/out` |
+| **Factory method** | `ServiceOrder.create`, `Payment.create`, `ServiceType.create`, `StockReservation.activate` |
+| **Value Object** | `Cpf`, `Cnpj`, `Document`, `LicensePlate` (customer) |
+| **State machine** | `OrderServiceStatusEnum.canTransitionTo`, `ServiceStatusEnum` (TO_DO→DOING→DONE) |
+| **Idempotência** | dedupe por `messageId` nos consumidores SQS; guarda de passo esperado na Saga; reserva única por OS |
+| **After-commit** | `AfterCommit.run` para notificar só depois da transação |
+| **Polling job** | `PaymentStatusPollingJob` (Mercado Pago) com ShedLock |
+| **Contract testing** | `*SagaContractTest` contra `contracts/saga-messages.json` |
 
 ## Links Relacionados
-- [[Visao Geral]]
 - [[Estrutura de Pastas]]
+- [[Convencoes Microsservicos]]
 - [[Dominio DDD]]
-- [[Orcamento]]
