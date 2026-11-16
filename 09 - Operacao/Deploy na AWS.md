@@ -318,6 +318,17 @@ própria nos tópicos, ~US$ 1/mês; criptografia do SQS nas filas), e os alarmes
 
 **Por que no terminal:** este repo não tem workflow de CI/CD; é aplicado
 manualmente (o padrão dele é LocalStack; com `use_localstack=false` vai pra AWS).
+> [!warning] Se o `init` der "Invalid backend configuration argument"
+> Este diretório já foi usado com o LocalStack: o `bootstrap-localstack.sh` cria o
+> `backend_override.tf` (ignorado pelo git), que troca o backend S3 por um backend **local**.
+> Com ele presente, o Terraform rejeita os `-backend-config`. Para usar a AWS real, mova o
+> override e o estado local de lado (não apague: o estado local é só do LocalStack) e inicie de novo:
+> ```bash
+> mkdir -p ~/workbench-localstack-backup
+> mv backend_override.tf terraform.tfstate terraform.tfstate.backup ~/workbench-localstack-backup/ 2>/dev/null
+> rm -rf .terraform
+> ```
+> Depois rode o `terraform init` abaixo. Para voltar ao LocalStack, rode `./bootstrap-localstack.sh` de novo.
 
 ```bash
 cd "$WORKBENCH_DIR/workbench-messaging"
