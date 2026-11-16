@@ -20,6 +20,10 @@ aliases:
 Guia passo a passo para subir os 4 microsserviços + mensageria (LocalStack) na sua
 máquina e **demonstrar o fluxo da Saga** (caminho feliz e compensação). Serve como
 roteiro para gravar o vídeo. Sem custo, sem AWS.
+> [!tip] Versão automatizada
+> Com a plataforma no compose (`docker-compose.dev.yml --profile app`), `workbench-messaging/e2e/saga-e2e.sh`
+> executa estes mesmos cenários (caminho feliz, falta de estoque, pagamento recusado e segurança) e diz
+> se passaram. Veja [[Rodando Testes]].
 
 > **Pré-requisitos:** Docker rodando, Java 21, `curl` e `jq`. A infra de bancos usa
 > o `workbench-messaging/docker-compose.dev.yml` (LocalStack + Postgres×3 + MongoDB).

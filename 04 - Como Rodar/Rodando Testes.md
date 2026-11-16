@@ -32,6 +32,17 @@ O `verify` precisa de **Docker** rodando (Testcontainers sobe Postgres ou MongoD
 
 Surefire roda os unitários; failsafe roda os `*IntegrationTest` (e o BDD).
 
+## Teste ponta a ponta (plataforma no compose)
+Com o compose no ar (`docker compose -f docker-compose.dev.yml --profile app up -d --build`, em
+`workbench-messaging`), um script percorre a plataforma inteira pelo gateway: caminho feliz até
+`ENTREGUE`, compensação por falta de estoque, pagamento recusado com nova cobrança, e 401/403.
+```bash
+cd workbench-messaging && e2e/saga-e2e.sh          # ~1 min; código 0 se tudo passou
+e2e/saga-e2e.sh feliz estoque                       # cenários: feliz | estoque | pagamento | seguranca
+```
+Usa pagamento simulado (`PAYMENT_PROVIDER=fake`), não o Mercado Pago. Detalhes no README do
+`workbench-messaging`. Não roda no CI.
+
 ## Cobertura
 
 JaCoCo com **gate de 80% de linhas** no `verify` (o build falha abaixo disso). Relatório em
