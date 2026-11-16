@@ -42,7 +42,7 @@ graph LR
     zap --> rep[zap-reports/&lt;serviço&gt;/zap-report.html + .json]
 ```
 
-- **Token:** o script assina um JWT de ADMIN (HS256, 1 h) com o `JWT_SECRET` de dev — local
+- **Token:** o `scan-platform.sh` assina um JWT de ADMIN (RS256, 1 h) com a chave de dev de `dev-keys/` — local
   não existe a Lambda de login, e assim nenhum token fica fixo no repositório. O ZAP injeta
   o `Authorization` em toda requisição (replacer).
 - **Alvo:** `-t http://<serviço>:8080/v3/api-docs` (a spec) e `-O http://gateway:8000`

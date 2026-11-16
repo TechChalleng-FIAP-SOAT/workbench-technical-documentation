@@ -208,8 +208,8 @@ webhook **simulado** de pagamento, que só existe localmente). O array `H` abaix
 `Authorization`, então todas as chamadas deste guia que usam `"${H[@]}"` vão autenticadas. O
 webhook simulado é chamado SEM token (rota pública no billing, só no perfil `local`).
 ```bash
-# JWT staff ADMIN (HS256, secret default do os-service), válido por 1 ano.
-export TOKEN='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbkB3b3JrYmVuY2guZGV2Iiwicm9sZXMiOlsiQURNSU4iXSwiaWF0IjoxNzkyODAwOTQzLCJleHAiOjE4MjQzMzY5NDN9.RSEIF6etTjYgzwC2gqyXFinopqMm3f47lZp79qdYeCw'
+# JWT staff ADMIN (RS256, chave de dev de workbench-messaging/dev-keys), válido até 2100.
+export TOKEN='eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6IndvcmtiZW5jaC1hdXRoIn0.eyJzdWIiOiJhZG1pbkB3b3JrYmVuY2guZGV2Iiwicm9sZXMiOlsiQURNSU4iXSwiZXhwIjo0MTAyNDQ0ODAwfQ.PDsG3cX4EXmwtXKs3a21McMxEy-wO16cb0IKs8YgLj4SW22cOknv4okyBP0UBioo9_k58jqfEdhwkJhnc12a9wvdAO8cYOR6v7eiMkTt8sslMC95ulihJSA6p1KOtKnLzA8ThTW53d14gG-SdsUMf-7Va1Z0Yn6xCRW7MTUvcpu_SzauozapGMMn5514NouKCktEzi_oO2XrKBVNkPXv1o8bLUsNX56nLUY-OWsktfLVAnk4Ql7sOp2KM2iSRR2cMrJdVaunCqvhvIhnZzzvXAI9a-wJHogNuY-oZ0kD1rNxWuVNaoTWun-S8tMXe694TQsTxraoiUt6YQ3MobL38A'
 H=(-H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json")
 ```
 

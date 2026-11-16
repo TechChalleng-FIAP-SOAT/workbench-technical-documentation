@@ -149,7 +149,21 @@ terraform output -raw node_security_group_id # ex.: sg-0def456...
 | `DB_PASSWORD_BILLING` | senha forte da instância do Billing | database |
 | `DB_PASSWORD_CUSTOMER` | senha forte da instância do Customer | database |
 | `DB_USERNAME_OS` / `_BILLING` / `_CUSTOMER` | (opcional) usuário master por instância; default = `os_service` / `billing` / `customer`. Começa com letra, só letras/números/`_` (**sem hífen**), até 63 chars. NÃO use admin/postgres/root nem o identificador da instância | database |
-| `JWT_SECRET` | string ≥32 chars, **a mesma** usada nos apps e na Lambda | lambda, apps |
+| `JWT_PRIVATE_KEY` | chave **privada** RSA que assina os tokens (Base64 do DER PKCS#8). Restrinja o secret ao repositório `workbench-lambda` | lambda |
+| `JWT_PUBLIC_KEY` | chave **pública** do mesmo par (Base64 do DER X.509) | lambda (authorizer), apps |
+| `JWT_SERVICE_PRIVATE_KEY` | chave privada do token de serviço do os-service (outro par). Restrinja ao `workbench-os-service` | os-service |
+| `JWT_SERVICE_PUBLIC_KEY` | chave pública desse segundo par | customer-service |
+
+> **Gerar os dois pares (RS256, 2048 bits)** — uma vez, no terminal; depois apague os `.pem`:
+> ```bash
+> for par in auth service; do
+>   openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out $par.pem
+>   openssl pkcs8 -topk8 -nocrypt -in $par.pem -outform DER | base64 | tr -d '\n' > $par-private.b64
+>   openssl pkey -in $par.pem -pubout -outform DER | base64 | tr -d '\n' > $par-public.b64
+> done
+> ```
+> `auth-*` → `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY`; `service-*` → `JWT_SERVICE_PRIVATE_KEY`/`JWT_SERVICE_PUBLIC_KEY`.
+> O antigo `JWT_SECRET` (HS256) não é mais usado; pode apagá-lo da org.
 
 > O pipeline cria **uma instância por serviço**: `workshop-os-service-main`,
 > `workshop-billing-main`, `workshop-customer-main` (identificadores derivados
@@ -307,8 +321,13 @@ e não ao cliente. Com o SES, o os-service envia direto ao e-mail cadastrado do 
    isso o envio é recusado.
 2. **Sandbox.** Uma conta nova do SES só envia **de remetente verificado para destinatário
    verificado**. Por isso `ses_verified_recipients` precisa ter o e-mail **cadastrado do cliente** de teste
-   (o do Customer Service). Para mandar a qualquer cliente, peça ao SES o **acesso à produção**
-   (console do SES, solicitação manual).
+   (o do Customer Service). Para mandar a **qualquer** cliente, peça à AWS o **acesso à produção**
+   (ela analisa o pedido, em geral em até 24 h). O pedido está pronto em
+   `workbench-messaging/scripts/ses-request-production.sh <url-do-projeto>`: ele mostra a conta e
+   pede confirmação antes de enviar. A AWS exige tratar bounces e reclamações — o Terraform já cria
+   o *configuration set* `workbench-customer-email`, que os envia ao tópico de alertas, e o
+   os-service envia por ele. Com domínio próprio, passe `-var "ses_domain=seudominio.com"` e
+   publique os CNAMEs de DKIM do output `ses_dkim_records` (melhor entrega, aprovação mais fácil).
 3. **Ligar no serviço.** Crie o secret da org `SES_SENDER_EMAIL` com o **mesmo** remetente. A pipeline
    do os-service troca para `NOTIFICATION_CHANNEL=ses` sozinha quando ele existe; sem o secret, fica
    no SNS. Com `ses` e sem remetente o pod **não sobe** (`CrashLoopBackOff`), de propósito.
@@ -353,7 +372,7 @@ entra na **FASE 8**.
 `DB_URL_OS_MAIN`+`DB_USERNAME_OS`+`DB_PASSWORD_OS` (os-service),
 `DB_URL_BILLING_MAIN`+`DB_USERNAME_BILLING`+`DB_PASSWORD_BILLING` (billing),
 `DB_URL_CUSTOMER_MAIN`+`DB_USERNAME_CUSTOMER`+`DB_PASSWORD_CUSTOMER` (customer),
-`MONGODB_URI` (execution) — além de `JWT_SECRET` (igual em todos), `MP_ACCESS_TOKEN`
+`MONGODB_URI` (execution) — além de `JWT_PUBLIC_KEY` (igual em todos), `JWT_SERVICE_PRIVATE_KEY` (os), `JWT_SERVICE_PUBLIC_KEY` (customer), `MP_ACCESS_TOKEN`
 (billing), `ADMIN_INITIAL_PASSWORD` (customer, no 1º deploy) e (opcional) `DD_API_KEY`.
 
 **O que o pipeline faz sozinho em cada deploy:**
@@ -377,17 +396,17 @@ entra na **FASE 8**.
 
 **Segurança (todos os serviços exigem JWT — defesa em profundidade):**
 - Agora **os 4 serviços** validam o JWT (não só o os-service). Portanto o secret
-  `JWT_SECRET` precisa chegar a **todos** eles — o mesmo valor, ≥32 chars.
+  a chave pública `JWT_PUBLIC_KEY` precisa chegar a **todos** eles — o mesmo valor. Eles só verificam token; quem assina é a Lambda.
 - Os `k8s/secret.yaml` dos 4 serviços vêm com **placeholders `REPLACE_ME`** e **não
   são aplicados** no deploy. Em vez disso, o job `deploy-aws` de cada serviço monta o
   Secret da app (`kubectl create secret ... | kubectl apply`) com os **secrets da org**:
 
   | Serviço | Secret k8s recebe |
   |---|---|
-  | os-service | `SPRING_DATASOURCE_URL`=`DB_URL_OS_MAIN`, `_USERNAME`=`DB_USERNAME_OS`, `_PASSWORD`=`DB_PASSWORD_OS`, `JWT_SECRET` |
-  | billing | `DB_URL_BILLING_MAIN`, `DB_USERNAME_BILLING`, `DB_PASSWORD_BILLING`, `JWT_SECRET`, `MP_ACCESS_TOKEN` |
-  | customer | `DB_URL_CUSTOMER_MAIN`, `DB_USERNAME_CUSTOMER`, `DB_PASSWORD_CUSTOMER`, `JWT_SECRET` |
-  | execution | `MONGODB_URI`, `JWT_SECRET` |
+  | os-service | `SPRING_DATASOURCE_URL`=`DB_URL_OS_MAIN`, `_USERNAME`=`DB_USERNAME_OS`, `_PASSWORD`=`DB_PASSWORD_OS`, `JWT_PUBLIC_KEY`, `JWT_SERVICE_PRIVATE_KEY` |
+  | billing | `DB_URL_BILLING_MAIN`, `DB_USERNAME_BILLING`, `DB_PASSWORD_BILLING`, `JWT_PUBLIC_KEY`, `MP_ACCESS_TOKEN` |
+  | customer | `DB_URL_CUSTOMER_MAIN`, `DB_USERNAME_CUSTOMER`, `DB_PASSWORD_CUSTOMER`, `JWT_PUBLIC_KEY`, `JWT_SERVICE_PUBLIC_KEY` |
+  | execution | `MONGODB_URI`, `JWT_PUBLIC_KEY` |
 
   (`DD_API_KEY` é opcional em todos; em `develop` usa os `DB_URL_*_DEVELOP`.) Um passo
   **"Validar secrets obrigatórios"** derruba o job logo no início se algum estiver
@@ -587,7 +606,7 @@ custa centavos — ou apague com `aws s3 rb s3://"$TF_BUCKET" --force`.)
 
 **Ligar:**
 - [ ] 1. k8s-terraform — Actions → CD (já existe o cluster? rode de novo para criar a permissão SNS/SQS dos nós)
-- [ ] 2. outputs → secrets (VPC_ID_MAIN, SUBNET_IDS_MAIN, VPC_SECURITY_GROUP_IDS_MAIN, DB_PASSWORD_OS/BILLING/CUSTOMER, DB_USERNAME_OS/BILLING/CUSTOMER = os_service/billing/customer, JWT_SECRET)
+- [ ] 2. outputs → secrets (VPC_ID_MAIN, SUBNET_IDS_MAIN, VPC_SECURITY_GROUP_IDS_MAIN, DB_PASSWORD_OS/BILLING/CUSTOMER, DB_USERNAME_OS/BILLING/CUSTOMER = os_service/billing/customer, JWT_PRIVATE_KEY/JWT_PUBLIC_KEY/JWT_SERVICE_PRIVATE_KEY/JWT_SERVICE_PUBLIC_KEY)
 - [ ] 3. database — mergear PR na main → 3 RDS; `terraform output -json service_jdbc_urls` → criar DB_URL_OS_MAIN, DB_URL_BILLING_MAIN, DB_URL_CUSTOMER_MAIN
 - [ ] 3.1 MongoDB Atlas — cluster `fiap-db-mongo` ✅; criar usuário `execution`, network access 0.0.0.0/0; criar secret MONGODB_URI
 - [ ] 2b. secrets dos apps: MP_ACCESS_TOKEN, ADMIN_INITIAL_PASSWORD (e DD_API_KEY, opcional)

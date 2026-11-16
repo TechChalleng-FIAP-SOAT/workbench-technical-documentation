@@ -15,7 +15,7 @@ Na AWS, os valores vêm do `k8s/configmap.yaml` e dos Secrets de cada serviço (
 CD a partir dos GitHub Secrets).
 
 > [!warning] Segredos não têm valor padrão
-> `JWT_SECRET`, `SPRING_DATASOURCE_PASSWORD`, `PAYMENT_PROVIDER` (billing) e
+> `JWT_PUBLIC_KEY`, `SPRING_DATASOURCE_PASSWORD`, `PAYMENT_PROVIDER` (billing) e
 > `ADMIN_INITIAL_PASSWORD` (customer) são obrigatórios: sem eles o serviço não sobe. Os valores
 > de desenvolvimento ficam no perfil `local` (`application-local.yml` de cada serviço), que o
 > compose do `workbench-messaging` ativa com `SPRING_PROFILES_ACTIVE=local`. Rodando pela IDE
@@ -26,7 +26,9 @@ CD a partir dos GitHub Secrets).
 | Variável | Default | Descrição |
 |---|---|---|
 | `SERVER_PORT` | `8080` | Porta HTTP |
-| `JWT_SECRET` | — (dev no perfil `local`) | HS256 — **o mesmo** em todos os serviços e na Lambda |
+| `JWT_PUBLIC_KEY` | — (dev no perfil `local`) | Chave **pública** RS256 da Lambda de login — a mesma em todos os serviços e no authorizer |
+| `JWT_SERVICE_PRIVATE_KEY` | — (só os-service; dev no perfil `local`) | Assina o token de serviço das chamadas ao customer |
+| `JWT_SERVICE_PUBLIC_KEY` | — (só customer; dev no perfil `local`) | Aceita o token de serviço do os-service |
 | `SPRING_PROFILES_ACTIVE` | — | `local` libera os valores de desenvolvimento |
 | `SCHEDULING_POOL_SIZE` | `4` | Threads dos jobs `@Scheduled` (os, billing, execution) |
 | `LOG_JSON_FILE` | `/tmp/workbench/<serviço>.log` | Arquivo de log JSON (coletado pelo Datadog Agent) |
@@ -70,6 +72,7 @@ No LocalStack: ARN `arn:aws:sns:us-east-1:000000000000:<tópico>` e URL
 | os | `CUSTOMER_CONNECT_TIMEOUT` / `CUSTOMER_READ_TIMEOUT` | `2s` / `5s` | Timeouts das chamadas ao customer-service |
 | os | `NOTIFICATION_CHANNEL` | `sns` | Canal do e-mail ao cliente: `sns` (publica no tópico; chega só ao endereço inscrito) ou `ses` (envia direto ao e-mail cadastrado do cliente) |
 | os | `SES_SENDER_EMAIL` | — | Remetente verificado no SES. **Obrigatório com `NOTIFICATION_CHANNEL=ses`**: sem ele o serviço não sobe. Em sandbox, os destinatários também precisam estar verificados |
+| os | `SES_CONFIGURATION_SET` | — | Configuration set do SES (bounces e reclamações → tópico de alertas). A pipeline usa `workbench-customer-email` quando o SES está ligado |
 | billing | `MP_ACCESS_TOKEN` | — | Access Token do Mercado Pago. Os dois começam com `APP_USR-`: o que define sandbox ou produção é a credencial usada (*Credenciais de teste* × *de produção*), não o prefixo |
 | billing | `MP_BASE_URL` | `https://api.mercadopago.com` | API do Mercado Pago |
 | billing | `MP_NOTIFICATION_URL` | — | Opcional; a confirmação vem do job de consulta |
@@ -84,7 +87,7 @@ No LocalStack: ARN `arn:aws:sns:us-east-1:000000000000:<tópico>` e URL
 
 ## Lambda e gateway
 
-- Lambda: `CUSTOMER_SERVICE_URL`, `JWT_SECRET`, `JWT_EXPIRATION` (README do `workbench-lambda`).
+- Lambda: `CUSTOMER_SERVICE_URL`, `JWT_PRIVATE_KEY` (emissores), `JWT_PUBLIC_KEY` (authorizer), `JWT_EXPIRATION` (README do `workbench-lambda`).
 - Gateway (Terraform): `origin_url` (os) e `customer_origin_url`, `billing_origin_url`,
   `execution_origin_url` (README do `workbench-gateway`).
 

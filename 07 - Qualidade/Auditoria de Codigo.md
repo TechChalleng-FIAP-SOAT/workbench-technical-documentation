@@ -14,9 +14,9 @@ aliases:
 > das correções da 1ª e da 2ª e da migração para uma classe por caso de uso.
 > Branches: `ci/sonarcloud-config` dos 4 serviços — **a maior parte das mudanças ainda
 > não está commitada** (ver achado 1 da 4ª rodada).
-> `mvn verify` nos 4 (15/11/2026, depois da revisão externa): **496 testes, 0 falhas**
-> (os 255, billing 89, customer 81, execution 71); cobertura de linhas: os 91,1%, billing 87,2%,
-> customer 87,0%, execution 89,0% (gate JaCoCo de 80% atingido em todos).
+> `mvn verify` nos 4 (16/11/2026, depois de RS256, Decimal128 e SES): **509 testes, 0 falhas**
+> (os 260, billing 91, customer 83, execution 75); cobertura de linhas: os 90,9%, billing 86,7%,
+> customer 86,4%, execution 89,3% (gate JaCoCo de 80% atingido em todos).
 
 **O que estes repositórios fazem:** quatro microsserviços Java/Spring Boot de uma
 oficina mecânica. O **os-service** cria a ordem de serviço (OS) e orquestra uma
@@ -212,6 +212,20 @@ não pegaram porque as Sagas de teste usavam o id da OS como rodada.
 | O resultado do pagamento sai com esse `sagaId` (sem ele, o id da OS) | billing: `PaymentDecisionRecorder`, `SnsPaymentEventAdapter` |
 | Teste do caminho real: Saga nova até `ENTREGUE`, e o pagamento com o id da OS é descartado | os: `newSagaRunsToDeliveredWhenEveryReplyCarriesItsRun` |
 | Testes da cobrança com rodada, nova cobrança e fallback | billing: `PaymentUseCasesTest`, `SagaCommandHandlerTest` |
+
+## Correções de 16/11/2026 — limitações que saíram da lista
+
+| Item | Antes | Agora | Onde |
+|---|---|---|---|
+| E-mail de pagamento recusado | Não saía se a Saga já tivesse outro motivo registrado (ex.: timeout na baixa da reserva) | Só a **mesma** recusa repetida deixa de avisar; qualquer outro motivo anterior não bloqueia | os: `SagaOrchestrator.onPaymentFailed` + `firstRealRefusalWarnsEvenWithAnEarlierTimeoutReason` |
+| Decimais no MongoDB | Gravados como texto (`"10" < "9"`); "estoque baixo" filtrado em memória | `Decimal128`; "estoque baixo" é consulta no banco; documentos antigos migrados no start | execution: `big-decimal: decimal128`, `DecimalStorageMigration`, `StockMongoRepository.findLowStock`, `DecimalStorageIntegrationTest` |
+| JWT | HS256 com o mesmo segredo em 6 componentes: qualquer um emitia token de ADMIN | RS256: só a Lambda tem a chave privada; o token de serviço do os-service tem par próprio, aceito só pelo customer; `kid` obrigatório | ADR-0009, `JwtService`/`RsaKeys` nos 4 serviços, `JwtIssuer`/`JwtVerifier` na Lambda, pipelines, Terraform da Lambda, `dev-keys/` |
+| SES em sandbox | Só "peça à AWS" na documentação | *Configuration set* com bounces e reclamações no tópico de alertas (requisito da AWS), identidade de domínio com DKIM opcional e o pedido de produção pronto | messaging: `ses.tf`, `scripts/ses-request-production.sh`; os: `SES_CONFIGURATION_SET`. **O pedido em si é da conta AWS e precisa ser enviado pela equipe** |
+
+Validado: `mvn verify` nos 4 serviços e na Lambda, `terraform validate` no messaging e na
+Lambda, e o ponta a ponta local (`e2e/saga-e2e.sh`) com as imagens novas — 84 verificações, 0
+falhas. O ponta a ponta tinha uma corrida no cenário de nova cobrança (lia a cobrança antes de
+o billing consumir o comando); agora espera o id mudar.
 
 ---
 

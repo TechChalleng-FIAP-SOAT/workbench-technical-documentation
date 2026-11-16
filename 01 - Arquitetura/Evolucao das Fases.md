@@ -115,7 +115,7 @@ graph LR
 | Repositórios separados com CI/CD | 4 | 11 | 🔄 Ampliado |
 | `main` protegida com PR | 4 repositórios | Os 11; check `unit-test` exigido nos 4 serviços | ✅ |
 | Datadog | Monólito | Agent + APM + dashboards e monitores por serviço; `saga_id` nos logs | ✅ Ampliado |
-| RFCs e ADRs | `workbench-monolith/docs` | Mesmo lugar, com ADR-0005 a ADR-0008 novas (fluxo da OS, microsserviços, rede e segredos, robustez da Saga) | ✅ |
+| RFCs e ADRs | `workbench-monolith/docs` | Mesmo lugar, com ADR-0005 a ADR-0009 novas (fluxo da OS, microsserviços, rede e segredos, robustez da Saga, JWT RS256) | ✅ |
 | Diagramas de componentes e sequência | Monólito | [[Arquitetura e Saga - Visao Completa V2]], [[Arquitetura Alvo Microsservicos]] | ✅ |
 
 ### Fase 4 — Microsserviços e Saga
@@ -173,15 +173,15 @@ graph LR
 | API Gateway | 3 | 🔄 | `workbench-gateway` | Cada prefixo vai ao serviço dono, com authorizer JWT, por VPC Link até o NLB interno de cada serviço. |
 | Function serverless de autenticação | 3 | 🔄 | `workbench-lambda` | Consulta o customer-service por REST, não o banco. |
 | Login de staff | 3 | ✅ | customer-service | Senha inicial do admin por secret; bloqueio após 5 erros seguidos. |
-| Segredos fora do código | 2 | ✅ | Secrets da org → pipeline | Os `k8s/secret.yaml` só têm placeholders, e os `application.yml` não têm valor padrão para segredos: sem `JWT_SECRET`, senha do banco, `PAYMENT_PROVIDER` ou `ADMIN_INITIAL_PASSWORD`, o serviço não sobe. Os valores de desenvolvimento ficam no perfil `local`. |
+| Segredos fora do código | 2 | ✅ | Secrets da org → pipeline | Os `k8s/secret.yaml` só têm placeholders, e os `application.yml` não têm valor padrão para segredos: sem as chaves do JWT, senha do banco, `PAYMENT_PROVIDER` ou `ADMIN_INITIAL_PASSWORD`, o serviço não sobe. Os valores de desenvolvimento ficam no perfil `local`. |
 | Scan de vulnerabilidades | 1 | ✅ | [[Relatorio de Vulnerabilidades - Fase 4]], [[OWASP ZAP]] | ZAP e Trivy sem achados HIGH/CRITICAL nem FAIL/WARN; SAST no Sonar. |
 
 ### Qualidade e testes
 
 | Requisito | Fase | Hoje | Onde está | O que mudou |
 |---|---|---|---|---|
-| Testes unitários e de integração | 1, 2, 4 | ✅ | `src/test` de cada serviço ([[Rodando Testes]]) | 496 testes, 0 falhas (15/11/2026): os 255, billing 89, customer 81, execution 71. |
-| Cobertura ≥ 80% | 1, 4 | ✅ | Gate JaCoCo no `verify` | Linhas em 15/11/2026: os 91,1%, execution 89,0%, customer 87,0%, billing 87,2%. |
+| Testes unitários e de integração | 1, 2, 4 | ✅ | `src/test` de cada serviço ([[Rodando Testes]]) | 509 testes, 0 falhas (15/11/2026): os 260, billing 91, customer 83, execution 75. |
+| Cobertura ≥ 80% | 1, 4 | ✅ | Gate JaCoCo no `verify` | Linhas em 15/11/2026: os 90,9%, execution 89,3%, customer 86,4%, billing 86,7%. |
 | BDD | 4 | ✅ | `ordem_servico.feature` (os-service) | Fluxo feliz, recusa e transição inválida. |
 | Sonar no CI | 4 | ✅ | Job `code-analysis` ([[SonarQube]]) | Entrou na Fase 4. |
 | Testes de contrato | 4 (extra) | ✅ | `*SagaContractTest` nos 3 serviços da Saga | O CI compara a cópia de cada serviço com o contrato do `workbench-messaging`. |
@@ -205,7 +205,7 @@ graph LR
 | README por repositório | 1, 2, 3 | ✅ | Cada repositório |
 | Swagger/Postman | 1–4 | ✅ | SpringDoc em cada serviço + `postman/` |
 | Diagramas de componentes e sequência | 3, 4 | ✅ | [[Arquitetura e Saga - Visao Completa V2]], [[Arquitetura e Saga - Visao Completa]] |
-| RFCs e ADRs | 3, 4 | ✅ | `workbench-monolith/docs/rfc` (RFC-0001 a 0003) e `docs/adr` (ADR-0001 a 0008) |
+| RFCs e ADRs | 3, 4 | ✅ | `workbench-monolith/docs/rfc` (RFC-0001 a 0003) e `docs/adr` (ADR-0001 a 0009) |
 | Contratos de mensagem | 4 | ✅ | [[Contratos de Mensagem]] |
 | Documentação de API por domínio | 1 | 🔄 | Pasta `03 - API`, reescrita para os microsserviços |
 | Guias de operação (extra) | 4 | ✅ | [[Deploy na AWS]], [[Desligar a AWS]], [[Runbook]], [[Saga Ponta a Ponta]], [[Auditoria de Codigo]] |
@@ -214,12 +214,12 @@ graph LR
 
 ## 5. Limitações conhecidas
 
-> [!warning] Registradas em 14/11/2026
+> [!warning] Atualizadas em 16/11/2026 (decimais em texto e JWT com segredo compartilhado foram resolvidos)
 > - **Conferência do contrato no CI:** só funciona com `contracts/saga-messages.json` na `main` do `workbench-messaging`; sem ele, o passo avisa e segue.
 > - **Limite de login por réplica:** com N pods, são N × 5 tentativas por janela (decisão registrada no código).
 > - **Estorno sem gatilho:** o billing sabe estornar, mas nenhuma regra da Saga pede estorno hoje.
 > - **Reserva sem prazo:** uma OS que nunca é aprovada nem recusada mantém as peças reservadas.
-> - **Estoque baixo lido por inteiro:** `findLowStock` filtra em memória, porque os valores estão gravados como texto no MongoDB.
+> - **SES em sandbox:** até a AWS aprovar o acesso à produção (pedido pronto em `workbench-messaging/scripts/ses-request-production.sh`), só destinatários verificados recebem e-mail.
 
 ---
 

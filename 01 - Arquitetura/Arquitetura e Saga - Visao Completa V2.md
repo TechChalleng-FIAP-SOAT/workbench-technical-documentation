@@ -280,7 +280,7 @@ o tamanho do domínio. (Ver ADR-0005.)
 
 ## 10. Autenticação e autorização
 
-- **Emissão de token (serverless):** a Lambda emite JWT (HS256, segredo compartilhado)
+- **Emissão de token (serverless):** a Lambda emite JWT (RS256, chave privada só dela)
   em dois fluxos — **cliente** por CPF (`POST /auth`) e **staff** por e-mail/senha
   (`POST /auth/login`, validando no Customer Service). Token de cliente carrega
   `clientId` + `roles:[CLIENT]`; token de staff carrega as roles reais (ADMIN/
@@ -288,7 +288,7 @@ o tamanho do domínio. (Ver ADR-0005.)
 - **Validação na borda:** o API Gateway usa um **Lambda authorizer** para proteger as
   rotas do os-service, exceto `/auth` e `/auth/login` (públicas por definição).
 - **Validação por serviço (defesa em profundidade):** além da borda, **cada
-  microsserviço valida o JWT por conta própria** (Spring Security + filtro HS256 com o
+  microsserviço valida o JWT por conta própria** (Spring Security + filtro RS256 com a chave pública da Lambda, em vez do
   mesmo segredo). Assim as chamadas internas (serviço→serviço) também exigem token, não
   só as que entram pelo gateway. Rotas públicas por serviço: health/Swagger; billing
   `POST /api/payments/webhook` (**só com o provider `fake`, local**: com o Mercado Pago real a rota
@@ -306,7 +306,7 @@ o tamanho do domínio. (Ver ADR-0005.)
 | OWASP Top 10 | Como é tratado |
 |---|---|
 | A01 Broken Access Control | Autorização por role em todas as rotas; ownership na decisão do orçamento; JWT validado por serviço. |
-| A02 Cryptographic Failures | Senha de staff com **BCrypt**; JWT assinado (HS256); segredos fora do código (secret manager). |
+| A02 Cryptographic Failures | Senha de staff com **BCrypt**; JWT assinado em RS256 (só a Lambda tem a chave privada); segredos fora do código (secret manager). |
 | A03 Injection | **Bean Validation** (`@Valid`) nos DTOs; acesso a dados via Spring Data (JPA/Mongo) parametrizado — sem concatenação de query. |
 | A05 Security Misconfiguration | Headers `X-Frame-Options: DENY` + `nosniff`; `k8s/secret.yaml` com placeholders (`REPLACE_ME`), segredos reais injetados no deploy. |
 | A07 Identification & Auth Failures | Fluxos de login dedicados; throttling no gateway contra brute-force/enumeração de CPF. |
@@ -378,7 +378,7 @@ Visão de ponta a ponta, do ponto de vista de quem usa:
 | Linguagem / framework | Java 21, Spring Boot |
 | Bancos | PostgreSQL (os, billing, customer), MongoDB (execution) |
 | Mensageria | AWS SNS + SQS (+ DLQ) |
-| Autenticação | AWS Lambda + API Gateway, JWT HS256 |
+| Autenticação | AWS Lambda + API Gateway, JWT RS256 |
 | Pagamento | Mercado Pago (REST) |
 | Infra | AWS EKS, RDS, Terraform, Helm |
 | Observabilidade | Micrometer, Datadog |

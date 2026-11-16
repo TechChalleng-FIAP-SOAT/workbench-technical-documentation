@@ -28,8 +28,8 @@ Importe o environment junto com a collection e selecione-o no canto superior dir
 - **Workbench - Local** — para o compose (`docker compose -f workbench-messaging/docker-compose.dev.yml --profile app up -d --build`).
   `gatewayUrl` = `http://localhost:8000` (nginx com o mesmo roteamento do API Gateway);
   os serviços também respondem direto (os `:8080`, customer `:8081`, billing `:8082`,
-  execution `:8083`). O `token` de ADMIN já vem preenchido (assinado com o `JWT_SECRET` do
-  perfil `local`). Não há Lambda local: a pasta "Autenticação" só funciona na AWS.
+  execution `:8083`). O `token` de ADMIN já vem preenchido (RS256, assinado com a chave de dev de
+  `workbench-messaging/dev-keys/`, válido até 2100). Não há Lambda local: a pasta "Autenticação" só funciona na AWS.
 - **Workbench - AWS** — preencha `gatewayUrl` com a `invoke_url` do `workbench-gateway`
   (`https://<api-id>.execute-api.us-east-1.amazonaws.com/main`) e `staffPassword` com o
   valor do secret `ADMIN_INITIAL_PASSWORD` (não é `admin123`). `customerUrl`, `osUrl`,
@@ -47,9 +47,9 @@ Importe o environment junto com a collection e selecione-o no canto superior dir
 As collections usam variáveis de collection (edite em **Variables**), que o environment
 selecionado sobrescreve:
 
-- `token` — JWT (HS256) com role `ADMIN` ou `TECHNICIAN`. Os microsserviços **não
-  emitem** token (isso é da Lambda de auth); em dev, gere um token assinado com o
-  `JWT_SECRET` compartilhado e cole aqui.
+- `token` — JWT (RS256) com role `ADMIN` ou `TECHNICIAN`. Os microsserviços **não
+  emitem** token (isso é da Lambda de auth, a única com a chave privada); em dev, gere um
+  token com a chave de `dev-keys/` (abaixo) e cole aqui.
 - `baseUrl` (nas collections por serviço) — a porta local do serviço (os `8080`,
   customer `8081`, billing `8082`, execution `8083`); na AWS, a `invoke_url` do gateway.
 - `customerUrl`, `osUrl`, `billingUrl`, `executionUrl` (na collection unificada) —
@@ -61,25 +61,19 @@ selecionado sobrescreve:
   - AWS: a `invoke_url` do `workbench-gateway` (mesma do `gatewayUrl`) — já vem assim no
     environment AWS.
 
-### Gerar um token de dev (JWT HS256)
+### Gerar um token de dev (JWT RS256)
 
-Com o `JWT_SECRET` de desenvolvimento, gere um token de ADMIN (válido 24h):
+Os tokens são RS256: a Lambda assina com a chave privada e os serviços só têm a pública. Em
+dev, o par fica em `workbench-messaging/dev-keys/` (só para a máquina local). Para gerar um
+token de ADMIN (o `exp` abaixo é 2100):
 
 ```bash
-python3 - <<'PY'
-import hmac, hashlib, base64, json, time
-def b64(b): return base64.urlsafe_b64encode(b).rstrip(b'=').decode()
-secret = "SEU_JWT_SECRET_DE_DEV"
-now = int(time.time())
-header = {"alg":"HS256","typ":"JWT"}
-payload = {"sub":"admin@workbench.dev","roles":["ADMIN"],"iat":now,"exp":now+86400}
-seg = b64(json.dumps(header,separators=(',',':')).encode())+"."+b64(json.dumps(payload,separators=(',',':')).encode())
-sig = hmac.new(secret.encode(), seg.encode(), hashlib.sha256).digest()
-print(seg+"."+b64(sig))
-PY
+cd workbench-messaging
+bash -c 'source scripts/dev-jwt.sh; mint_dev_jwt "{\"sub\":\"admin@workbench.dev\",\"roles\":[\"ADMIN\"],\"exp\":4102444800}"'
 ```
 
-Cole o resultado na variável `token`.
+Cole o resultado na variável `token`. O environment **Workbench - Local** já vem com um
+token assim.
 
 ## Fluxo Saga (E2E)
 

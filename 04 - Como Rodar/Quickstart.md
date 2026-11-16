@@ -38,19 +38,11 @@ Swagger de cada serviço: `http://localhost:<porta>/swagger-ui/index.html`.
 
 ## 2. Token de acesso
 
-Localmente não existe a Lambda de login: gere um JWT de ADMIN assinado com o `JWT_SECRET`
-de dev (ver [[JWT#Gerar um token de dev]]):
+Localmente não existe a Lambda de login: gere um JWT de ADMIN (RS256) com a chave de dev de
+`workbench-messaging/dev-keys/` (ver [[JWT#Gerar um token de dev]]):
 
 ```bash
-export TOKEN=$(python3 - <<'PY'
-import base64,hashlib,hmac,json,time
-b=lambda x: base64.urlsafe_b64encode(x).rstrip(b'=').decode()
-n=int(time.time()); h=b(json.dumps({"alg":"HS256","typ":"JWT"}).encode())
-p=b(json.dumps({"sub":"admin@workbench.dev","roles":["ADMIN"],"iat":n,"exp":n+86400}).encode())
-s=b(hmac.new(b"akmsdkmasfnjsgknakmsdkmasdkmsadfkmdsakmdkmsadsa",f"{h}.{p}".encode(),hashlib.sha256).digest())
-print(f"{h}.{p}.{s}")
-PY
-)
+export TOKEN=$(cd workbench-messaging && bash -c 'source scripts/dev-jwt.sh; mint_dev_jwt "{\"sub\":\"admin@workbench.dev\",\"roles\":[\"ADMIN\"],\"exp\":4102444800}"')
 curl -s -H "Authorization: Bearer $TOKEN" http://localhost:8000/service-types
 ```
 
@@ -74,7 +66,7 @@ docker compose -f docker-compose.dev.yml --profile app down -v    # apaga os ban
 Para depurar um serviço na IDE: suba só a infra (`docker compose -f docker-compose.dev.yml up -d`,
 sem profile), rode `./bootstrap-localstack.sh` para criar as filas e suba cada serviço com
 `./mvnw spring-boot:run -Dspring-boot.run.profiles=local` e as variáveis do
-[[Saga Ponta a Ponta]] (Passo 3). Sem o perfil `local` o serviço não sobe: `JWT_SECRET`, a
+[[Saga Ponta a Ponta]] (Passo 3). Sem o perfil `local` o serviço não sobe: `JWT_PUBLIC_KEY`, a
 senha do banco e (no billing) `PAYMENT_PROVIDER` não têm valor padrão.
 
 ## Links Relacionados

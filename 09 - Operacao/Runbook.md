@@ -73,16 +73,18 @@ ou o pagamento.
 
 ---
 
-## 3. Trocar o `JWT_SECRET`
+## 3. Trocar as chaves do JWT
 
-O mesmo segredo assina (Lambda) e valida (4 serviços) todos os tokens.
+Tokens RS256: a Lambda assina com `JWT_PRIVATE_KEY` e todos verificam com `JWT_PUBLIC_KEY`
+(o token de serviço do os-service usa o outro par, `JWT_SERVICE_*`).
 
-1. Gere um valor novo com 32+ caracteres e atualize o secret `JWT_SECRET` da org.
-2. Rode de novo o CD do `workbench-lambda` e o pipeline dos 4 serviços (ou
-   **Re-run all jobs** na última execução de cada um).
-3. Até tudo terminar, tokens emitidos com o segredo antigo ou novo podem ser recusados
-   por um lado ou outro. Depois, todo token antigo deixa de valer: clientes e equipe
-   fazem login de novo.
+1. Gere um par novo (comando em [[JWT#Formato das chaves]]) e atualize **os dois** secrets do
+   par na org (privada e pública).
+2. Rode de novo o CD do `workbench-lambda` e o pipeline dos serviços que usam o par (para o
+   par principal: os 4; para o de serviço: os-service e customer).
+3. Até tudo terminar, um lado pode recusar token do outro. Depois, todo token antigo deixa
+   de valer: clientes e equipe fazem login de novo. Se só a chave **privada** vazou, troque
+   o par inteiro — a pública sozinha não emite token.
 
 ---
 
@@ -103,7 +105,7 @@ kubectl rollout status deployment/<serviço> -n <serviço>
 
 | Sintoma no log | Causa | Correção |
 |---|---|---|
-| `Could not resolve placeholder 'JWT_SECRET'` (ou `SPRING_DATASOURCE_PASSWORD`, `PAYMENT_PROVIDER`) | Variável obrigatória faltando (não há valor padrão) | Conferir o secret da org e o Secret do pod |
+| `Could not resolve placeholder 'JWT_PUBLIC_KEY'` (ou `JWT_SERVICE_*`, `SPRING_DATASOURCE_PASSWORD`, `PAYMENT_PROVIDER`) | Variável obrigatória faltando (não há valor padrão) | Conferir o secret da org e o Secret do pod |
 | `Admin admin@workbench.dev ainda usa a senha padrão` (customer) | Admin ainda em `admin123` sem `ADMIN_INITIAL_PASSWORD` | Criar o secret `ADMIN_INITIAL_PASSWORD` (≥ 8 caracteres) e rodar o pipeline |
 | Pod em `CrashLoopBackOff` sem log da aplicação | Falta de memória ou probe | `kubectl describe pod` (eventos) e `kubectl logs --previous` |
 

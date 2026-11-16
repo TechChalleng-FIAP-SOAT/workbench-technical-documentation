@@ -45,8 +45,9 @@ tem `JSONB`, roda gerenciado no RDS e cada schema é versionado por **Flyway**.
   reservas simultâneas no mesmo estoque abortam uma delas (*WriteConflict*) em vez de
   perder atualização.
 - **Um serviço, um banco:** o execution usa só o Mongo, sem um Postgres ao lado.
-**Troca:** os valores decimais estão gravados como texto, então "estoque abaixo do mínimo"
-é filtrado em memória. **Decisão:** [ADR-0005](https://github.com/TechChalleng-FIAP-SOAT/workbench-monolith/blob/main/docs/adr/ADR-0005-fluxo-os-estoque-pagamento.md).
+Quantidades e preços são gravados como **`Decimal128`** (decimal exato do MongoDB), então
+"estoque abaixo do mínimo" é uma consulta no banco. Documentos antigos, gravados como texto,
+são convertidos no start (`DecimalStorageMigration`). **Decisão:** [ADR-0005](https://github.com/TechChalleng-FIAP-SOAT/workbench-monolith/blob/main/docs/adr/ADR-0005-fluxo-os-estoque-pagamento.md).
 
 ### Por que MongoDB Atlas e não DocumentDB ou Mongo no cluster?
 O **Atlas M0** é gerenciado e gratuito; o Amazon DocumentDB não tem plano gratuito e cobra
@@ -123,6 +124,14 @@ emite o JWT (cliente por CPF, staff por e-mail e senha) e o authorizer valida o 
 de qualquer rota protegida. **Decisão:**
 [RFC-0003](https://github.com/TechChalleng-FIAP-SOAT/workbench-monolith/blob/main/docs/rfc/RFC-0003-estrategia-autenticacao.md).
 
+### Por que JWT RS256 (assimétrico) e não HS256?
+Com HS256 o mesmo segredo assina e verifica: os 4 serviços, a Lambda e o authorizer tinham o
+segredo, e qualquer um deles comprometido emitia token de ADMIN para todos. Com RS256 só a
+Lambda tem a chave **privada**; os outros têm a pública e só verificam. O token de serviço do
+os-service usa outro par, aceito só pelo customer. **Troca:** 4 secrets de chave em vez de
+1, e trocar as chaves exige redeploy. **Decisão:**
+[ADR-0009](https://github.com/TechChalleng-FIAP-SOAT/workbench-monolith/blob/main/docs/adr/ADR-0009-jwt-rs256.md).
+
 ### Por que os serviços também validam o JWT, se o gateway já valida?
 Defesa em profundidade: dentro da VPC, uma chamada que não passou pelo gateway continua
 precisando de token válido, e a regra de "cliente só vê os próprios dados" fica no caso de
@@ -150,10 +159,9 @@ mudança no billing não redeploya o customer. **Decisão:**
 | Limitação | Por que ficou |
 |---|---|
 | Reserva de estoque sem prazo | Precisa de regra de negócio (em quantos dias recusar sozinho) |
+| SES em sandbox até a AWS aprovar a produção | O pedido é manual e analisado pela AWS (`scripts/ses-request-production.sh`); até lá, só destinatários verificados recebem |
 | Limite de login por réplica | Contador compartilhado (Redis) só compensa com o serviço exposto em escala |
-| Decimais como texto no MongoDB | Migrar para `Decimal128` exige migração dos documentos já gravados |
 | RDS com 1 dia de backup, sem Multi-AZ | Limite do plano gratuito da AWS |
-| JWT HS256 com o mesmo segredo nos 5 componentes | RS256 com JWKS é o próximo passo; HS256 atende ao escopo da entrega |
 
 ## Notas relacionadas
 - [[Visao Geral]] · [[Arquitetura e Saga - Visao Completa V2]] · [[Evolucao das Fases]]

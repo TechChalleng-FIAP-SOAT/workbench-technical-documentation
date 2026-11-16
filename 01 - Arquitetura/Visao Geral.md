@@ -43,7 +43,7 @@ graph LR
 ```
 
 - Cada serviço tem **repositório, pipeline e banco próprios**; nenhum lê o banco de outro (ADR-0006).
-- Login pela `workbench-lambda` (cliente por CPF, staff por e-mail/senha); JWT HS256 validado
+- Login pela `workbench-lambda` (cliente por CPF, staff por e-mail/senha); JWT RS256 validado
   no gateway e em cada serviço.
 - Observabilidade: logs JSON com `saga_id`, métricas e dashboards no Datadog.
 

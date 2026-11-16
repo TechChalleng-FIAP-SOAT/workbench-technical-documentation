@@ -42,7 +42,7 @@ graph LR
 | Cobertura de linhas | JaCoCo `check` no `verify` | **≥ 80%** — abaixo disso o build falha |
 | Quality Gate | SonarCloud | gate padrão "Sonar way" (bugs, vulnerabilidades, code smells, duplicação e cobertura no código novo) |
 
-Cobertura atual: os 91,1% · execution 89,0% · customer 87,0% · billing 87,2% — ver
+Cobertura atual: os 90,9% · execution 89,3% · customer 86,4% · billing 86,7% — ver
 [[Rodando Testes]].
 
 ## Complementos de segurança
