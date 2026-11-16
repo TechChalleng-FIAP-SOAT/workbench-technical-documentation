@@ -65,7 +65,7 @@ No LocalStack: ARN `arn:aws:sns:us-east-1:000000000000:<tópico>` e URL
 | os | `CUSTOMER_VALIDATION_ENABLED` | `false` | Valida cliente/placa no Customer Service ao abrir a OS |
 | os | `CUSTOMER_SERVICE_URL` | — | Base URL do Customer (ex.: `http://customer-service:8080`) |
 | customer | `ADMIN_INITIAL_PASSWORD` | — (obrigatório fora do perfil `local`) | Troca a senha do admin semeado no primeiro start (≥ 8 caracteres); sem ela, com o admin ainda em `admin123`, o serviço não sobe |
-| billing | `PAYMENT_PROVIDER` | — (`fake` no perfil `local`) | `fake` (webhook simulado, só local/testes) ou `mercadopago` |
+| billing | `PAYMENT_PROVIDER` | — (`fake` no perfil `local`) | `fake` (webhook simulado sem assinatura; só no perfil `local` e nos testes, senão o serviço não sobe) ou `mercadopago` |
 | billing | `MP_CONNECT_TIMEOUT` / `MP_READ_TIMEOUT` | `5s` / `10s` | Timeouts das chamadas ao Mercado Pago |
 | os | `CUSTOMER_CONNECT_TIMEOUT` / `CUSTOMER_READ_TIMEOUT` | `2s` / `5s` | Timeouts das chamadas ao customer-service |
 | os | `NOTIFICATION_CHANNEL` | `sns` | Canal do e-mail ao cliente: `sns` (publica no tópico; chega só ao endereço inscrito) ou `ses` (envia direto ao e-mail cadastrado do cliente) |

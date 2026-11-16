@@ -14,8 +14,8 @@ aliases:
 > das correções da 1ª e da 2ª e da migração para uma classe por caso de uso.
 > Branches: `ci/sonarcloud-config` dos 4 serviços — **a maior parte das mudanças ainda
 > não está commitada** (ver achado 1 da 4ª rodada).
-> `mvn verify` nos 4 (15/11/2026, depois da revisão externa): **492 testes, 0 falhas**
-> (os 255, billing 85, customer 81, execution 71); cobertura de linhas: os 91,1%, billing 87,2%,
+> `mvn verify` nos 4 (15/11/2026, depois da revisão externa): **496 testes, 0 falhas**
+> (os 255, billing 89, customer 81, execution 71); cobertura de linhas: os 91,1%, billing 87,2%,
 > customer 87,0%, execution 89,0% (gate JaCoCo de 80% atingido em todos).
 
 **O que estes repositórios fazem:** quatro microsserviços Java/Spring Boot de uma

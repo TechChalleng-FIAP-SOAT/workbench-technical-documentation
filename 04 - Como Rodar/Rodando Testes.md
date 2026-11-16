@@ -53,7 +53,7 @@ JaCoCo com **gate de 80% de linhas** no `verify` (o build falha abaixo disso). R
 | os-service | 91,1% | 75,5% | 255 |
 | execution-service | 89,0% | 78,6% | 71 |
 | customer-service | 87,0% | 64,0% | 81 |
-| billing-service | 87,2% | 72,7% | 85 |
+| billing-service | 87,2% | 73,4% | 89 |
 
 No CI, o job `unit-test` publica o relatório como artefato `jacoco-report` e o job
 `code-analysis` envia a cobertura ao SonarCloud ([[SonarQube]]).

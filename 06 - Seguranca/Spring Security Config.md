@@ -26,7 +26,7 @@ Cada microsserviço tem a sua `infrastructure/security/SecurityConfig`, com o me
 |---|---|---|---|
 | os | — | `GET /order/document/**`, `POST /order/*/decision`, `POST /order/*/payment-retry` | todo o resto |
 | customer | `POST /api/users/auth/validate` (usado pela Lambda) | `GET /api/clients/**`, `GET /api/vehicles/**` | `GET /api/clients` (lista), escrita; `POST /api/users/signup` só **ADMIN** |
-| billing | `POST /api/payments/webhook` (só com `PAYMENT_PROVIDER=fake`) | `GET /api/budgets/**`, `GET /api/payments/**` | criação manual de cobrança |
+| billing | `POST /api/payments/webhook` (só com `PAYMENT_PROVIDER=fake`, que só sobe no perfil `local`) | `GET /api/budgets/**`, `GET /api/payments/**` | criação manual de cobrança |
 | execution | — | — | tudo |
 
 "Dono" é conferido no caso de uso (`Requester.requireAccessTo`): cliente acessando dado de

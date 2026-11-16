@@ -180,7 +180,7 @@ graph LR
 
 | Requisito | Fase | Hoje | Onde está | O que mudou |
 |---|---|---|---|---|
-| Testes unitários e de integração | 1, 2, 4 | ✅ | `src/test` de cada serviço ([[Rodando Testes]]) | 492 testes, 0 falhas (15/11/2026): os 255, billing 85, customer 81, execution 71. |
+| Testes unitários e de integração | 1, 2, 4 | ✅ | `src/test` de cada serviço ([[Rodando Testes]]) | 496 testes, 0 falhas (15/11/2026): os 255, billing 89, customer 81, execution 71. |
 | Cobertura ≥ 80% | 1, 4 | ✅ | Gate JaCoCo no `verify` | Linhas em 15/11/2026: os 91,1%, execution 89,0%, customer 87,0%, billing 87,2%. |
 | BDD | 4 | ✅ | `ordem_servico.feature` (os-service) | Fluxo feliz, recusa e transição inválida. |
 | Sonar no CI | 4 | ✅ | Job `code-analysis` ([[SonarQube]]) | Entrou na Fase 4. |
