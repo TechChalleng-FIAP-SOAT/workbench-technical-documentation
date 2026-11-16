@@ -63,7 +63,7 @@ collection `postman/workbench-plataforma.postman_collection.json`.
 
 - Local (`PAYMENT_PROVIDER=fake`): confirme com `POST /api/payments/webhook`
   `{"gatewayPaymentId":"<id>","approved":true}` — sem token.
-- Sandbox do Mercado Pago: `MP_ACCESS_TOKEN=TEST-...` e pague o `checkoutUrl` com um cartão
+- Sandbox do Mercado Pago: `MP_ACCESS_TOKEN=<Access Token de teste, APP_USR-…>` e pague o `checkoutUrl` com um cartão
   de teste do Mercado Pago (o job de consulta confirma em até 30 s).
 
 ## Links Relacionados

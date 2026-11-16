@@ -23,8 +23,8 @@ Passo a passo completo para **ligar** a stack na AWS, **testar/gravar o vídeo**
 
 > **Estratégia:** ligar → testar → destruir no mesmo dia. O EKS não tem "pausar":
 > ou está criado (cobrando) ou destruído. Custo estimado com tudo ligado:
-> **~US$ 5–8/dia** (EKS control plane ~US$0,10/h + NAT Gateway ~US$0,045/h +
-> 2× nós t3.small + 3× RDS db.t3.micro free-tier-elegíveis).
+> **~US$ 7–10/dia** (estimativa: EKS control plane ~US$0,10/h + NAT Gateway ~US$0,045/h +
+> 2× nós t3.small + 3× RDS db.t3.micro + 4 NLBs internos; a chave KMS dos tópicos soma ~US$ 1/mês).
 >
 > **Recriação:** os endpoints do RDS e os DNS dos NLBs mudam a cada vez que a stack é
 > recriada. Depois da FASE 3, atualize os `DB_URL_*_MAIN`; depois da FASE 6, o
@@ -143,7 +143,7 @@ terraform output -raw node_security_group_id # ex.: sg-0def456...
 | `VPC_ID_MAIN` | o `vpc_id` | database, lambda |
 | `SUBNET_IDS_MAIN` | os private subnets, formato `["subnet-aaa","subnet-bbb"]` | database, lambda |
 | `VPC_SECURITY_GROUP_IDS_MAIN` | o `node_security_group_id`, formato `["sg-0def456"]` | lambda |
-| `MP_ACCESS_TOKEN` | access token **de teste** do Mercado Pago (`TEST-...`, em *Suas integrações → Credenciais de teste*). **Obrigatório**: o deploy do billing falha sem ele | billing |
+| `MP_ACCESS_TOKEN` | Access Token **de teste** do Mercado Pago (começa com `APP_USR-`, em *Suas integrações → sua aplicação → Credenciais de teste*; tipo de API **Preferências**). **Obrigatório**: o deploy do billing falha sem ele | billing |
 | `ADMIN_INITIAL_PASSWORD` | **necessário no 1º deploy** — senha forte (≥8) que substitui a padrão `admin123` do `admin@workbench.dev` no 1º start do customer-service. Enquanto o admin estiver com `admin123`, o serviço não sobe sem ele; depois da troca, pode faltar | customer |
 | `DB_PASSWORD_OS` | senha forte da instância do OS Service | database |
 | `DB_PASSWORD_BILLING` | senha forte da instância do Billing | database |
@@ -399,7 +399,11 @@ entra na **FASE 8**.
   para saber se foi pago. O webhook simulado `POST /api/payments/webhook` **não existe**
   na AWS (só local, com `fake`). Para pagar no vídeo: abra o `checkoutUrl` e use um
   [cartão de teste](https://www.mercadopago.com.br/developers/pt/docs/checkout-pro/integration-test/test-cards)
-  com um comprador de teste; em até ~30 s a OS vai para PAGO → ENTREGUE.
+  com um comprador de teste; em até ~30 s a OS vai para PAGO → ENTREGUE. O desenho completo do
+  fluxo (cobrança, link por e-mail, detecção do pagamento, recusa e nova cobrança) está no README
+  do `workbench-billing-service`, seção **Fluxo de pagamento**.
+  Use o **usuário comprador** de teste em **janela anônima**: com uma conta real o Mercado Pago
+  recusa com "uma das partes é de teste".
 - Ao entrar em `PAGAMENTO_PENDENTE`, a cobrança é criada automaticamente e o **link
   de pagamento** é enviado por e-mail: ao **cliente**, se o canal SES estiver ligado (FASE 4); senão, ao endereço inscrito no tópico de notificações.
 

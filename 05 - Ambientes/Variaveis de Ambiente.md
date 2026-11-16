@@ -68,7 +68,7 @@ No LocalStack: ARN `arn:aws:sns:us-east-1:000000000000:<tópico>` e URL
 | billing | `PAYMENT_PROVIDER` | — (`fake` no perfil `local`) | `fake` (webhook simulado, só local/testes) ou `mercadopago` |
 | billing | `MP_CONNECT_TIMEOUT` / `MP_READ_TIMEOUT` | `5s` / `10s` | Timeouts das chamadas ao Mercado Pago |
 | os | `CUSTOMER_CONNECT_TIMEOUT` / `CUSTOMER_READ_TIMEOUT` | `2s` / `5s` | Timeouts das chamadas ao customer-service |
-| billing | `MP_ACCESS_TOKEN` | — | Token do Mercado Pago (`TEST-…` sandbox, `APP_USR-…` produção) |
+| billing | `MP_ACCESS_TOKEN` | — | Access Token do Mercado Pago. Os dois começam com `APP_USR-`: o que define sandbox ou produção é a credencial usada (*Credenciais de teste* × *de produção*), não o prefixo |
 | billing | `MP_BASE_URL` | `https://api.mercadopago.com` | API do Mercado Pago |
 | billing | `MP_NOTIFICATION_URL` | — | Opcional; a confirmação vem do job de consulta |
 | billing | `PAYMENT_POLLING_INTERVAL_MS` | `30000` | Intervalo do job que consulta o pagamento |

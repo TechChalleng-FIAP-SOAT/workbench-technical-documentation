@@ -48,7 +48,7 @@ Todos os serviços têm healthcheck em `/actuator/health` e `depends_on` com
 - **Logs JSON** de cada serviço em `${WORKBENCH_LOG_DIR:-/tmp/workbench}` no host, para o
   Datadog Agent local coletar.
 - **Pagamento:** `PAYMENT_PROVIDER=fake` por padrão; para o sandbox do Mercado Pago exporte
-  `PAYMENT_PROVIDER=mercadopago` e `MP_ACCESS_TOKEN=TEST-...` antes do `up`.
+  `PAYMENT_PROVIDER=mercadopago` e `MP_ACCESS_TOKEN=<Access Token de teste, APP_USR-…>` antes do `up`.
 - **Perfil `local`:** o compose define `SPRING_PROFILES_ACTIVE=local` nos 4 serviços. É ele
   que libera os valores de desenvolvimento (segredo do JWT, pagamento simulado, admin com
   `admin123`); fora dele os segredos são obrigatórios.
