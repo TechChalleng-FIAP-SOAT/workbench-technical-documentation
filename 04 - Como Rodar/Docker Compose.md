@@ -11,7 +11,7 @@ aliases:
 
 # Docker Compose
 
-Arquivo: `workbench-messaging/docker-compose.dev.yml`. Três níveis, por **profile**:
+Arquivo principal: `workbench-messaging/docker-compose.dev.yml`. Três níveis, por **profile**:
 
 | Comando | Sobe |
 |---|---|
@@ -19,6 +19,14 @@ Arquivo: `workbench-messaging/docker-compose.dev.yml`. Três níveis, por **prof
 | `… --profile app up -d --build` | Infra **+ plataforma**: `messaging-init`, 4 serviços e gateway |
 | `zap/scan-platform.sh` (profile `scan`) | Scan DAST com OWASP ZAP — [[OWASP ZAP]] |
 
+## Outros arquivos compose do workspace
+| Arquivo | Sobe | Quando usar |
+|---|---|---|
+| `workbench-messaging/docker-compose.yml` | só o LocalStack (SNS/SQS/STS), porta 4566 | testar o Terraform do messaging isolado |
+| `workbench-monolith/docker-compose.yml` | Postgres, monólito (8080) e o `validation` (25 etapas de API, termina com código 0) | base histórica das fases 1 a 3; perfis `security` (ZAP) e `quality` (SonarQube) são opcionais |
+Os três **disputam portas e nomes de container**: o LocalStack simples e o `dev` usam o mesmo
+`workbench-localstack` (4566), e o monólito ocupa a 8080 do os-service. Rode um por vez
+(`docker compose … down` antes de subir outro).
 ## Serviços
 
 | Serviço | Imagem / build | Porta | Depende de |
@@ -47,7 +55,7 @@ Todos os serviços têm healthcheck em `/actuator/health` e `depends_on` com
   conectar direto no primário evita depender desse nome.
 - **Logs JSON** de cada serviço em `${WORKBENCH_LOG_DIR:-/tmp/workbench}` no host, para o
   Datadog Agent local coletar.
-- **Pagamento:** `PAYMENT_PROVIDER=fake` por padrão; para o sandbox do Mercado Pago exporte
+- **Pagamento:** `PAYMENT_PROVIDER=fake` por padrão (só sobe no perfil `local`, ver abaixo); para o sandbox do Mercado Pago exporte
   `PAYMENT_PROVIDER=mercadopago` e `MP_ACCESS_TOKEN=<Access Token de teste, APP_USR-…>` antes do `up`.
 - **Perfil `local`:** o compose define `SPRING_PROFILES_ACTIVE=local` nos 4 serviços. É ele
   que libera os valores de desenvolvimento (segredo do JWT, pagamento simulado, admin com
@@ -57,6 +65,11 @@ Todos os serviços têm healthcheck em `/actuator/health` e `depends_on` com
   `no-new-privileges`. Se um serviço tentar gravar fora de `/tmp`, o erro aparece aqui,
   antes de chegar ao cluster.
 
+- **Trava do `fake`:** o billing recusa iniciar com `PAYMENT_PROVIDER=fake` fora do perfil `local`
+  (`FakeProviderGuard`), porque o webhook simulado não tem assinatura. O compose já ativa `local`.
+## Teste ponta a ponta
+Com `--profile app` no ar, `workbench-messaging/e2e/saga-e2e.sh` percorre a plataforma pelo
+gateway (caminho feliz, falta de estoque, pagamento recusado, 401/403) — ver [[Rodando Testes]].
 ## Comandos úteis
 
 ```bash

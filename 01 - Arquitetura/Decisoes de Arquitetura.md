@@ -104,7 +104,8 @@ timeout e devolve 503 se o customer estiver fora. **Decisão:**
 ### Por que o pagamento é confirmado por consulta, e não por webhook?
 Um webhook exigiria um endpoint público para o Mercado Pago. Com a consulta a cada 30 s
 (`ShedLock` garante uma réplica por vez), nenhum endpoint de pagamento fica na internet.
-**Troca:** até ~30 s de atraso. **Decisão:** ADR-0008.
+**Troca:** até ~30 s de atraso. **Decisão:** ADR-0008. O webhook simulado do billing só existe com
+`PAYMENT_PROVIDER=fake`, que o serviço só aceita no perfil `local` (`FakeProviderGuard`).
 
 ---
 

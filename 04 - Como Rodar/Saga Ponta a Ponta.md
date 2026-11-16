@@ -203,10 +203,10 @@ Espere cada um imprimir `Started ...Application`.
 ## Passo 4 — Preparar dados base (outro terminal)
 
 Token de ADMIN para as chamadas protegidas (dev). **Todos os serviços agora exigem
-JWT** (customer, os, billing, execution) — exceto rotas públicas (login, webhook de
-pagamento, health/swagger). O array `H` abaixo já inclui o `Authorization`, então todas
-as chamadas deste guia que usam `"${H[@]}"` vão autenticadas. O webhook de pagamento é
-chamado SEM token (rota pública).
+JWT** (customer, os, billing, execution) — exceto rotas públicas (login, health/swagger e o
+webhook **simulado** de pagamento, que só existe localmente). O array `H` abaixo já inclui o
+`Authorization`, então todas as chamadas deste guia que usam `"${H[@]}"` vão autenticadas. O
+webhook simulado é chamado SEM token (rota pública no billing, só no perfil `local`).
 ```bash
 # JWT staff ADMIN (HS256, secret default do os-service), válido por 1 ano.
 export TOKEN='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbkB3b3JrYmVuY2guZGV2Iiwicm9sZXMiOlsiQURNSU4iXSwiaWF0IjoxNzkyODAwOTQzLCJleHAiOjE4MjQzMzY5NDN9.RSEIF6etTjYgzwC2gqyXFinopqMm3f47lZp79qdYeCw'
@@ -310,7 +310,8 @@ curl -s "${H[@]}" http://localhost:8080/order/id/$OS | jq '.serviceStatus'   # -
 
 ### 5.6 Confirmar pagamento (webhook do billing) → OS PAGA/ENTREGUE
 A cobrança já foi criada automaticamente (5.5). Pegue o `gatewayPaymentId` dela e
-confirme o pagamento via webhook (o que, em produção, o gateway faria sozinho).
+confirme o pagamento via webhook simulado. Na AWS isso não existe: com o Mercado Pago um job do
+billing consulta o pagamento a cada 30 s.
 ```bash
 # 1) obtém o gatewayPaymentId da cobrança criada automaticamente pela Saga
 export GPID=$(curl -s "${H[@]}" http://localhost:8082/api/payments/service-order/$OS \
@@ -321,14 +322,14 @@ echo "gatewayPaymentId=$GPID"
 curl -s -X POST http://localhost:8082/api/payments/webhook -H "Content-Type: application/json" \
   -d "{\"gatewayPaymentId\":\"$GPID\",\"approved\":true}"
 
-# aguarde ~2-3s (o webhook é assíncrono: billing publica PagamentoConfirmado na Saga)
+# aguarde ~2-3s (a confirmação é assíncrona: billing publica PagamentoConfirmado na Saga)
 sleep 3
 curl -s "${H[@]}" http://localhost:8080/order/id/$OS | jq '.serviceStatus'   # -> ENTREGUE
 ```
 > **O que o webhook faz:** `POST /api/payments/webhook` simula a notificação de um gateway
-> real (ex. Mercado Pago). Na AWS, você cadastra a URL do webhook no painel do gateway e
-> ele chama sozinho quando o cliente paga; localmente (provider `fake`) você simula essa
-> chamada. O billing marca o pagamento como `PAGAMENTO_APROVADO` e **publica
+> e **só existe com `PAYMENT_PROVIDER=fake`**, que só sobe no perfil `local` (o
+> `FakeProviderGuard` barra o início do serviço em qualquer outro caso). Na AWS não há webhook:
+> o Mercado Pago é consultado pelo `PaymentStatusPollingJob`. O billing marca o pagamento como `PAGAMENTO_APROVADO` e **publica
 > `PagamentoConfirmado` na Saga**; o os-service, ao recebê-lo, avança a OS
 > `PAGAMENTO_PENDENTE → PAGO → ENTREGUE`. A resposta HTTP do webhook é só `200`; o avanço
 > da OS acontece em seguida, de forma assíncrona. O webhook é **idempotente**: reenviar a

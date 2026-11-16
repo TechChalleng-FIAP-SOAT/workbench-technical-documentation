@@ -9,7 +9,7 @@ collection no próprio repositório, em `postman/`; aqui fica a **collection uni
 | Collection | Onde | Conteúdo |
 |---|---|---|
 | OS Service | `workbench-os-service/postman/` | Ordem de serviço, diagnóstico, decisão do orçamento |
-| Billing Service | `workbench-billing-service/postman/` | Orçamento, pagamento, webhook |
+| Billing Service | `workbench-billing-service/postman/` | Orçamento, pagamento, webhook simulado (só local) |
 | Execution Service | `workbench-execution-service/postman/` | Produtos, estoque e reservas |
 | Customer Service | `workbench-customer-service/postman/` | Clientes e veículos |
 | **Plataforma (todos)** | `workbench-technical-documentation/postman/` | Os 4 serviços + pasta "Fluxo Saga (E2E)" |
@@ -85,6 +85,6 @@ Cole o resultado na variável `token`.
 
 A pasta **"Fluxo Saga (E2E - caminho feliz)"** na collection unificada executa, em
 ordem: criar cliente → veículo → OS → diagnóstico (dispara a Saga) → consultar
-orçamento → aprovar → webhook de pagamento → conferir OS em PAGO/ENTREGUE. O
+orçamento → aprovar → webhook simulado de pagamento (só local) → conferir OS em PAGO/ENTREGUE. O
 `orderId` é capturado automaticamente na criação da OS. Requer os 4 serviços no ar
 e a mensageria (LocalStack) ativa — ver `workbench-messaging/docker-compose.dev.yml`.
