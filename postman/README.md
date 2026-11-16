@@ -8,8 +8,8 @@ collection no próprio repositório, em `postman/`; aqui fica a **collection uni
 
 | Collection | Onde | Conteúdo |
 |---|---|---|
-| OS Service | `workbench-os-service/postman/` | Ordem de serviço, diagnóstico, decisão do orçamento |
-| Billing Service | `workbench-billing-service/postman/` | Orçamento, pagamento, webhook simulado (só local) |
+| OS Service | `workbench-os-service/postman/` | Ordem de serviço, diagnóstico, decisão do orçamento, estado da Saga, serviços da OS, nova cobrança |
+| Billing Service | `workbench-billing-service/postman/` | Orçamento, cobrança (captura `gatewayPaymentId`), histórico, webhook simulado (só local) |
 | Execution Service | `workbench-execution-service/postman/` | Produtos, estoque e reservas |
 | Customer Service | `workbench-customer-service/postman/` | Clientes e veículos |
 | **Plataforma (todos)** | `workbench-technical-documentation/postman/` | Os 4 serviços + pasta "Fluxo Saga (E2E)" |
@@ -79,7 +79,28 @@ suba o compose de novo e gere outro token: o anterior deixa de valer.
 ## Fluxo Saga (E2E)
 
 A pasta **"Fluxo Saga (E2E - caminho feliz)"** na collection unificada executa, em
-ordem: criar cliente → veículo → OS → diagnóstico (dispara a Saga) → consultar
-orçamento → aprovar → webhook simulado de pagamento (só local) → conferir OS em PAGO/ENTREGUE. O
-`orderId` é capturado automaticamente na criação da OS. Requer os 4 serviços no ar
-e a mensageria (LocalStack) ativa — ver `workbench-messaging/docker-compose.dev.yml`.
+ordem: cliente → veículo → produto → estoque → OS → diagnóstico (dispara a Saga) →
+orçamento → estado da Saga → aprovar → `EM_EXECUCAO` → serviços `DOING`/`DONE` →
+`PAGAMENTO_PENDENTE` → cobrança → webhook simulado (só local) → OS `ENTREGUE`.
+
+- Rode pelo **Collection Runner** em ordem. Os ids (`clientId`, `productId`, `orderId`,
+  `serviceId`, `gatewayPaymentId`) são capturados pelos scripts de teste.
+- A Saga anda por mensageria (~5 s por passo): os passos 7, 13 e 15 já **esperam** antes de
+  enviar (15 s, 8 s e 8 s). Se a máquina estiver lenta, ponha um *Delay* no Runner.
+- Na AWS, pule o passo 14: abra o `checkoutUrl` do passo 13, pague com o cartão de teste e
+  rode o 15 depois de ~30 s.
+- Requer os 4 serviços e a mensageria (LocalStack) no ar — ver `workbench-messaging/docker-compose.dev.yml`.
+- Para o fluxo completo automatizado (inclui recusa, falta de estoque e segurança), use
+  `(cd workbench-messaging && bash e2e/saga-e2e.sh)`.
+
+## Formatos que mudaram (se você tem uma cópia antiga importada)
+
+| Request | Formato atual |
+|---|---|
+| Diagnóstico | `{"parts":[{"productId","quantity"}], "services":[{"serviceType","laborCost","useDefault"}]}` |
+| Webhook simulado | `{"gatewayPaymentId": "...", "approved": true}` |
+| Veículo `type` | `CAR`, `MOTORCYCLE`, `TRUCK` ou `VAN` |
+| Produto `unit` | `UNIT`, `LITER`, `MILLILITER` ou `KILOGRAM` |
+| Tipo de serviço | id é UUID (capturado em "Listar tipos de serviço") |
+
+Reimporte as collections para pegar essas mudanças.

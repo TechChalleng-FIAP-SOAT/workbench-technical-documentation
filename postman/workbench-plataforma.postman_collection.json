@@ -642,6 +642,44 @@
           }
         },
         {
+          "name": "Estado da Saga da OS",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{osUrl}}/order/{{orderId}}/saga",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderId}}",
+                "saga"
+              ]
+            },
+            "description": "Passo atual da Saga, passos concluídos e o motivo quando falhou ou o pagamento foi recusado."
+          }
+        },
+        {
+          "name": "Nova cobrança após pagamento recusado",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{osUrl}}/order/{{orderId}}/payment-retry",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderId}}",
+                "payment-retry"
+              ]
+            },
+            "description": "Gera um novo link de pagamento quando o anterior foi recusado/cancelado (202). Cliente dono (clientToken) ou staff."
+          }
+        },
+        {
           "name": "Monitoring - tempo médio por tipo",
           "request": {
             "method": "POST",
@@ -706,7 +744,18 @@
               "mode": "raw",
               "raw": "{\n  \"name\": \"TROCA_DE_PASTILHA\",\n  \"description\": \"Troca das pastilhas dianteiras\",\n  \"laborCost\": 120.00,\n  \"laborHours\": 1.5\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 201) { var v=pm.response.json().id; pm.environment.set('serviceTypeId', v); pm.collectionVariables.set('serviceTypeId', v); }"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Atualizar tipo de serviço",
@@ -1141,7 +1190,7 @@
           }
         },
         {
-          "name": "7. Consultar orçamento gerado (aguarde ~2-3s)",
+          "name": "7. Consultar orçamento gerado (espera 15 s pela Saga)",
           "request": {
             "method": "GET",
             "url": {
@@ -1156,7 +1205,19 @@
                 "{{orderId}}"
               ]
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A Saga leva ~5 s por passo: reserva -> orçamento.",
+                  "setTimeout(() => {}, 15000);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "8. Conferir OS em AGUARDANDO_APROVACAO",
@@ -1173,6 +1234,25 @@
                 "{{orderId}}"
               ]
             }
+          }
+        },
+        {
+          "name": "8a. Estado da Saga (AGUARDANDO_APROVACAO, passos concluídos)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{osUrl}}/order/{{orderId}}/saga",
+              "host": [
+                "{{osUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderId}}",
+                "saga"
+              ]
+            },
+            "description": "Passo atual da Saga, passos concluídos e o motivo quando falhou ou o pagamento foi recusado."
           }
         },
         {
@@ -1344,8 +1424,18 @@
           }
         },
         {
-          "name": "13. Buscar cobrança (aguarde ~2-3s; captura gatewayPaymentId)",
+          "name": "13. Buscar cobrança (espera 8 s; captura gatewayPaymentId)",
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// A cobrança é criada pela Saga alguns segundos depois de PAGAMENTO_PENDENTE.",
+                  "setTimeout(() => {}, 8000);"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {
@@ -1373,7 +1463,7 @@
           }
         },
         {
-          "name": "14. Webhook de pagamento aprovado (aguarde ~2-3s depois)",
+          "name": "14. Webhook de pagamento aprovado (só local, PAYMENT_PROVIDER=fake)",
           "request": {
             "method": "POST",
             "auth": {
@@ -1418,7 +1508,19 @@
                 "{{orderId}}"
               ]
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Pagamento -> PAGO -> ENTREGUE passa pela Saga.",
+                  "setTimeout(() => {}, 8000);"
+                ]
+              }
+            }
+          ]
         }
       ]
     }
