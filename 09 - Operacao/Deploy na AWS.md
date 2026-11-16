@@ -101,12 +101,9 @@ node group + metrics-server, e dá aos nós a permissão de **publicar no SNS e 
 > RDS (criado no `workbench-database`). O Atlas é externo à AWS e não depende desta fase.
 
 **Como ligar (pipeline):**
-1. Acesse: https://github.com/TechChalleng-FIAP-SOAT/workbench-k8s-terraform/actions
-2. Clique no workflow **CD** no menu esquerdo.
-3. Abra a execução mais recente.
-4. Canto superior direito → **Re-run jobs → Re-run all jobs**.
-   - *Por quê re-run:* a pipeline dispara por push na `main`; como o código já
-     está na `main` e os secrets agora existem, re-executar roda o `apply` de fato.
+1. Mergeie o PR do `workbench-k8s-terraform` na `main` — o merge dispara o `apply`.
+2. Já mergeado? Actions → **CD** → **Run workflow** (branch `main`) e digite `apply` no campo de
+   confirmação. Sem a palavra, o job não cria nada.
 
 **Tempo:** ~15–20 min. **Sucesso:** job verde; step final imprime `cluster_name`
 e `vpc_id`.
@@ -331,8 +328,10 @@ e não ao cliente. Com o SES, o os-service envia direto ao e-mail cadastrado do 
 3. **Ligar no serviço.** Crie o secret da org `SES_SENDER_EMAIL` com o **mesmo** remetente. A pipeline
    do os-service troca para `NOTIFICATION_CHANNEL=ses` sozinha quando ele existe; sem o secret, fica
    no SNS. Com `ses` e sem remetente o pod **não sobe** (`CrashLoopBackOff`), de propósito.
-4. **Permissão.** `ses:SendEmail` nas identidades da conta já vem no `workbench-k8s-terraform`. Se o
-   cluster foi criado antes disso, rode o CD dele de novo.
+4. **Permissão.** `ses:SendEmail` nas identidades **e** no configuration set da conta já vem no
+   `workbench-k8s-terraform` (o envio por configuration set exige as duas). Se o cluster foi criado
+   antes disso, rode o CD dele de novo. O tópico de alertas já tem a policy que deixa o SES e o
+   CloudWatch publicarem nele.
 
 Cliente **sem e-mail cadastrado** não recebe nada (fica no log). Falha de envio nunca reverte a OS.
 Este caminho **não foi testado contra o SES real** (o LocalStack da comunidade não tem SES).
@@ -351,6 +350,8 @@ authorizer — além dos secrets no Secrets Manager.
 ainda não subiu, crie agora com um valor provisório, por exemplo `http://pendente:8080`
 (o Terraform só aceita `http://` para o NLB interno, e o CD já declara isso). O valor real
 entra na **FASE 8**.
+
+Também precisa de `JWT_PRIVATE_KEY` e `JWT_PUBLIC_KEY` (FASE 2): o CD para no início sem eles.
 
 **Como ligar (pipeline):**
 1. Mergeie o PR da branch `docs/readme-fase4` do lambda na `main`:
@@ -547,7 +548,7 @@ terraform init -input=false \
 mkdir -p ../target && [ -f ../target/workbench-lambda.jar ] || touch ../target/workbench-lambda.jar
 terraform destroy -var "environment=main" \
   -var "customer_service_url=http://pendente:8080" -var "customer_service_url_internal=true" \
-  -var "jwt_secret=destroy-destroy-destroy-destroy-0000" \
+  -var "jwt_private_key=destroy" -var "jwt_public_key=destroy" \
   -var 'vpc_subnet_ids=["subnet-x"]' -var 'vpc_security_group_ids=["sg-x"]'   # yes
 ```
 
@@ -560,6 +561,9 @@ terraform init -input=false -reconfigure \
   -backend-config="region=us-east-1" -backend-config="encrypt=true"
 terraform destroy -var "use_localstack=false" -var "environment=main"   # yes
 ```
+> Remove tópicos, filas, alarmes e as identidades SES. A chave KMS fica **agendada para
+> exclusão em 7 dias** (padrão da AWS) e é apagada sozinha; se recriar antes, o Terraform cria
+> uma chave nova com o mesmo alias.
 
 ### 5. Database (RDS)
 ```bash

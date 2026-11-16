@@ -28,8 +28,8 @@ Importe o environment junto com a collection e selecione-o no canto superior dir
 - **Workbench - Local** — para o compose (`docker compose -f workbench-messaging/docker-compose.dev.yml --profile app up -d --build`).
   `gatewayUrl` = `http://localhost:8000` (nginx com o mesmo roteamento do API Gateway);
   os serviços também respondem direto (os `:8080`, customer `:8081`, billing `:8082`,
-  execution `:8083`). O `token` de ADMIN já vem preenchido (RS256, assinado com a chave de dev de
-  `workbench-messaging/dev-keys/`, válido até 2100). Não há Lambda local: a pasta "Autenticação" só funciona na AWS.
+  execution `:8083`). O `token` vem **vazio**: gere um de ADMIN (seção "Gerar um token de dev" abaixo) e cole em `token`.
+  Não há Lambda local: a pasta "Autenticação" só funciona na AWS.
 - **Workbench - AWS** — preencha `gatewayUrl` com a `invoke_url` do `workbench-gateway`
   (`https://<api-id>.execute-api.us-east-1.amazonaws.com/main`) e `staffPassword` com o
   valor do secret `ADMIN_INITIAL_PASSWORD` (não é `admin123`). `customerUrl`, `osUrl`,
@@ -49,7 +49,7 @@ selecionado sobrescreve:
 
 - `token` — JWT (RS256) com role `ADMIN` ou `TECHNICIAN`. Os microsserviços **não
   emitem** token (isso é da Lambda de auth, a única com a chave privada); em dev, gere um
-  token com a chave de `dev-keys/` (abaixo) e cole aqui.
+  token com a chave de dev da sua máquina (abaixo) e cole aqui.
 - `baseUrl` (nas collections por serviço) — a porta local do serviço (os `8080`,
   customer `8081`, billing `8082`, execution `8083`); na AWS, a `invoke_url` do gateway.
 - `customerUrl`, `osUrl`, `billingUrl`, `executionUrl` (na collection unificada) —
@@ -64,16 +64,17 @@ selecionado sobrescreve:
 ### Gerar um token de dev (JWT RS256)
 
 Os tokens são RS256: a Lambda assina com a chave privada e os serviços só têm a pública. Em
-dev, o par fica em `workbench-messaging/dev-keys/` (só para a máquina local). Para gerar um
-token de ADMIN (o `exp` abaixo é 2100):
+dev, o par é gerado **por máquina** em `workbench-messaging/dev-keys/` (ignorado pelo git; a
+primeira chamada de `dev-jwt.sh` cria o par). Para gerar um token de ADMIN (o `exp` abaixo é
+2100; troque por um prazo menor se preferir):
 
 ```bash
 cd workbench-messaging
 bash -c 'source scripts/dev-jwt.sh; mint_dev_jwt "{\"sub\":\"admin@workbench.dev\",\"roles\":[\"ADMIN\"],\"exp\":4102444800}"'
 ```
 
-Cole o resultado na variável `token`. O environment **Workbench - Local** já vem com um
-token assim.
+Cole o resultado na variável `token`. Se você gerar um par novo (`scripts/dev-keys.sh --force`),
+suba o compose de novo e gere outro token: o anterior deixa de valer.
 
 ## Fluxo Saga (E2E)
 

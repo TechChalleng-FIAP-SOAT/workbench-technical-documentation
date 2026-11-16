@@ -65,15 +65,16 @@ shred -u *.pem 2>/dev/null || rm -P *.pem   # não deixe a chave privada no disc
 
 ## Gerar um token de dev
 
-Local não há Lambda. O par de **desenvolvimento** fica em `workbench-messaging/dev-keys/`
-(público no repositório de propósito; é o padrão do perfil `local`):
+Local não há Lambda. O par de **desenvolvimento** é gerado **por máquina** por
+`workbench-messaging/scripts/dev-keys.sh` (a primeira chamada de `dev-jwt.sh` já o cria) e fica
+em `workbench-messaging/dev-keys/`, **fora do git**. A pública vai para o `.env` que o compose lê:
 
 ```bash
 cd workbench-messaging
 bash -c 'source scripts/dev-jwt.sh; mint_dev_jwt "{\"sub\":\"admin@workbench.dev\",\"roles\":[\"ADMIN\"],\"exp\":4102444800}"'
 ```
 Token de cliente: troque as claims por `{"sub":"52998224725","clientId":1,"roles":["CLIENT"],"exp":...}`.
-O environment **Workbench - Local** do Postman já vem com um token de ADMIN assim.
+Cole o token na variável `token` do environment **Workbench - Local** do Postman (ele vem vazio).
 
 ## Trocar as chaves
 Ver o [[Runbook]] (seção "Trocar as chaves do JWT").

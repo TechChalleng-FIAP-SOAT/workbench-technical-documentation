@@ -90,7 +90,7 @@ terraform init -input=false \
 mkdir -p ../target && [ -f ../target/workbench-lambda.jar ] || touch ../target/workbench-lambda.jar
 terraform destroy -var "environment=main" \
   -var "customer_service_url=http://pendente:8080" -var "customer_service_url_internal=true" \
-  -var "jwt_secret=destroy-destroy-destroy-destroy-0000" \
+  -var "jwt_private_key=destroy" -var "jwt_public_key=destroy" \
   -var 'vpc_subnet_ids=["subnet-x"]' -var 'vpc_security_group_ids=["sg-x"]'   # yes
 ```
 
@@ -103,6 +103,9 @@ terraform init -input=false -reconfigure \
   -backend-config="region=$REGION" -backend-config="encrypt=true"
 terraform destroy -var "use_localstack=false" -var "environment=main"   # yes
 ```
+> Remove tópicos, filas, alarmes e as identidades SES. A chave KMS fica **agendada para
+> exclusão em 7 dias** (padrão da AWS) e é apagada sozinha; se recriar antes, o Terraform cria
+> uma chave nova com o mesmo alias.
 
 ### 5. Database (3 instâncias RDS)
 ```bash

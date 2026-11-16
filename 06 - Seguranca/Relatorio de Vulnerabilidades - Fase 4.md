@@ -112,7 +112,7 @@ Gate e o gate de cobertura (80%) do JaCoCo. Prints do painel entram no PDF de en
 
 ## 4. Controles já existentes (revisados)
 
-- JWT HS256 validado em todos os serviços; authorizer Lambda no API Gateway.
+- JWT RS256 (só a Lambda tem a chave privada) validado em todos os serviços; authorizer Lambda no API Gateway. Ver [[JWT]].
 - Autorização por perfil + **dono do recurso** (cliente só acessa a própria OS, orçamento,
   pagamento, cadastro e veículos).
 - Login de staff com bloqueio após 5 erros seguidos (15 min).

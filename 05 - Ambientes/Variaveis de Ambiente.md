@@ -26,7 +26,7 @@ CD a partir dos GitHub Secrets).
 | Variável | Default | Descrição |
 |---|---|---|
 | `SERVER_PORT` | `8080` | Porta HTTP |
-| `JWT_PUBLIC_KEY` | — (dev no perfil `local`) | Chave **pública** RS256 da Lambda de login — a mesma em todos os serviços e no authorizer |
+| `JWT_PUBLIC_KEY` | — (em dev: `.env` do compose, gerado por `scripts/dev-keys.sh`) | Chave **pública** RS256 da Lambda de login — a mesma em todos os serviços e no authorizer |
 | `JWT_SERVICE_PRIVATE_KEY` | — (só os-service; dev no perfil `local`) | Assina o token de serviço das chamadas ao customer |
 | `JWT_SERVICE_PUBLIC_KEY` | — (só customer; dev no perfil `local`) | Aceita o token de serviço do os-service |
 | `SPRING_PROFILES_ACTIVE` | — | `local` libera os valores de desenvolvimento |
