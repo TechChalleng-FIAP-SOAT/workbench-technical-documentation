@@ -17,6 +17,48 @@ aliases:
 > export TF_BUCKET="workbench-tfstate-<ID-da-conta-AWS>"   # bucket do state do Terraform
 > ```
 
+> [!warning] Antes de ligar: confira o painel abaixo
+> Cada merge na `main` de um repositório de infraestrutura dispara **deploy real** (não há
+> interruptor). Confira primeiro os secrets e siga a ordem dos merges.
+>
+> **Secrets da organização que precisam existir** (os que faltam fazem o pipeline parar no início):
+>
+> | Item | Quando criar |
+> |---|---|
+> | `AWS_*`, `TF_STATE_BUCKET_MAIN`, `DOCKER_*`, `SONAR_TOKEN`, `MP_ACCESS_TOKEN`, `DB_USERNAME_*`, `DB_PASSWORD_*` | já existem na organização |
+> | `VPC_ID_MAIN`, `SUBNET_IDS_MAIN`, `VPC_SECURITY_GROUP_IDS_MAIN`, `DB_URL_*_MAIN` | existem, mas guardam valores da stack **antiga**: **atualize** depois da FASE 1 (VPC) e da FASE 3 (RDS), pois os IDs mudam a cada recriação |
+> | `JWT_PRIVATE_KEY`, `JWT_PUBLIC_KEY` | FASE 2: sem eles o CD da Lambda e os 4 serviços falham |
+> | `JWT_SERVICE_PRIVATE_KEY`, `JWT_SERVICE_PUBLIC_KEY` | FASE 2: o os-service e o customer não sobem sem eles |
+> | `ADMIN_INITIAL_PASSWORD` | FASE 2: sem ele o customer-service **não sobe** |
+> | `MONGODB_URI` | FASE 3.1 (Atlas) |
+> | `CUSTOMER_SERVICE_URL_MAIN` | FASE 5 com `http://pendente:8080`; valor real na FASE 8 |
+> | `SES_SENDER_EMAIL`, `DD_API_KEY` | opcionais: e-mail direto ao cliente (FASE 4) e Datadog |
+> | variável `USE_AWS=true` | FASE 6: sem ela o `deploy-aws` dos apps fica *skipped* |
+> | `JWT_SECRET` | pode existir, mas **não é mais usado** (o HS256 saiu): apague |
+>
+> **Chaves de produção não são as de desenvolvimento.** As chaves de `workbench-messaging/dev-keys/`
+> existem só na máquina de cada pessoa (geradas por `scripts/dev-keys.sh`, fora do git) e nunca vão
+> para a AWS. Os pares da AWS são **outros**, gerados na FASE 2 pelos comandos abaixo.
+>
+> **Ordem dos merges** (um PR de cada vez; espere o CD terminar e confira antes do próximo):
+> 1. `workbench-k8s-terraform`: FASE 1; traz a permissão dos nós para SNS, SQS, KMS e SES.
+> 2. `workbench-database`: FASE 3; depois `workbench-lambda`: FASE 5 (já com os secrets de JWT).
+> 3. Os 4 serviços e o `workbench-messaging`: FASE 6, com `USE_AWS=true`.
+> 4. `workbench-gateway`: FASE 7, **só depois** de os serviços estarem no ar.
+>
+> O CD do `k8s-terraform` ignora mudanças só em `*.md`, `*.example` e `ci.yml`; o disparo manual
+> (Actions → CD → *Run workflow*) exige digitar `apply`. A `main` de cada repositório exige PR com
+> uma aprovação, inclusive para administradores. O `workbench-monolith` não faz deploy na AWS.
+>
+> **Pagamento na AWS é real (sandbox do Mercado Pago):** `PAYMENT_PROVIDER=mercadopago` vem do
+> ConfigMap, o webhook simulado não existe e a confirmação vem do job de consulta (a cada 30 s).
+> Se alguém configurar `fake` na AWS, o billing **recusa iniciar** (`FakeProviderGuard`). O fluxo
+> está no README do `workbench-billing-service`, seção **Fluxo de pagamento**.
+>
+> **Nunca testado na AWS real** (reserve tempo para corrigir na hora): o VPC Link achando os NLBs
+> pela tag, a chave KMS nos tópicos, o envio pelo SES (incluindo o configuration set e os alertas de
+> bounce) e o RS256 ponta a ponta com a Lambda real. Tudo isso foi validado só no compose local.
+
 Passo a passo completo para **ligar** a stack na AWS, **testar/gravar o vídeo** e
 **desligar** (destruir tudo para parar a cobrança). Cada passo explica *o que é*,
 *por que usamos no projeto* e *o que faz*.
