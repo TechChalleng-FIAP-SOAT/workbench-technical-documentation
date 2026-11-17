@@ -15,6 +15,7 @@ collection no próprio repositório, em `postman/`; aqui fica a **collection uni
 | **Plataforma (todos)** | `workbench-technical-documentation/postman/` | Os 4 serviços + pasta "Fluxo Saga (E2E)" |
 | Environment **Local** | `workbench-local.postman_environment.json` | Compose local: gateway `:8000`, serviços nas portas próprias, token de dev pronto |
 | Environment **AWS** | `workbench-aws.postman_environment.json` | Tudo pelo API Gateway (os serviços têm NLB interno e não respondem direto) |
+| **Saga na AWS (E2E, dados novos)** | `workbench-saga-feliz-aws.postman_collection.json` + `workbench-aws-saga.postman_environment.json` | Caminho feliz até o link do Mercado Pago, pagamento (pasta B), recusa com compensação, falta de estoque e monitoramento. Gerada por `gerar_collection_saga_aws.py` |
 
 ## Importar
 
@@ -75,6 +76,29 @@ bash -c 'source scripts/dev-jwt.sh; mint_dev_jwt "{\"sub\":\"admin@workbench.dev
 
 Cole o resultado na variável `token`. Se você gerar um par novo (`scripts/dev-keys.sh --force`),
 suba o compose de novo e gere outro token: o anterior deixa de valer.
+
+## Saga na AWS (E2E com dados novos)
+Collection feita para rodar pelo API Gateway da AWS, sem editar nada à mão. O passo **0** gera CPF
+válido, placa, cliente e produto **novos** a cada rodada, e cada passo tem testes (aba *Test Results*).
+| Pasta | O que faz |
+|---|---|
+| **A. Saga feliz** | Login da equipe, 401 sem token, cliente, veículo, produto, estoque, login do cliente por CPF, OS, diagnóstico (inicia a Saga), orçamento, reserva, aprovação **pelo cliente**, execução, cobrança e `checkoutUrl` do Mercado Pago |
+| **B. Depois de pagar** | Rode depois de pagar no `checkoutUrl` com o comprador de teste: confirma `ENTREGUE` (o job consulta o Mercado Pago a cada 30 s) |
+| **C. Falhas e compensação** | Cliente recusa (reserva de 3 peças volta a 0) e falta de estoque (999 peças): a Saga falha com o motivo e nada fica preso |
+| **D. Monitoramento** | Tempo médio por tipo de serviço |
+1. Importe a collection e o environment **Workbench - AWS - Saga** e selecione o environment.
+2. Preencha só `staffPassword` (valor do secret `ADMIN_INITIAL_PASSWORD`).
+3. Rode a pasta A **a partir do passo 0**. Passos de espera (8, 9a, C3, C6, 14) aguardam a Saga e, no Collection
+   Runner, tentam de novo sozinhos; enviando um a um, reenvie se ainda estiver andando.
+No terminal (sem pagamento): `newman run workbench-saga-feliz-aws.postman_collection.json -e <environment com a senha>
+--folder "A. Saga feliz: do login até a cobrança" --folder "C. Falhas e compensação (rode depois da A)"`.
+Validado em 17/11/2026 na AWS: pastas A e C, 34 requests e 43 verificações, 0 falhas.
+
+**O id do gateway muda** quando a stack é recriada (teardown + deploy). Gere os arquivos de novo com a nova
+`invoke_url` do `workbench-gateway`:
+```bash
+python3 gerar_collection_saga_aws.py . https://<api-id>.execute-api.us-east-1.amazonaws.com/main
+```
 
 ## Fluxo Saga (E2E)
 
