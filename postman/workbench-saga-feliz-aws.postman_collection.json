@@ -1,0 +1,1685 @@
+{
+  "info": {
+    "name": "Workbench - Saga feliz E2E (AWS, dados novos)",
+    "description": "E2E da Saga orquestrada (caminho feliz) pelo API Gateway da AWS. Cada execução gera CPF, placa, cliente e produto novos (passo 0). Pasta A: do login até o link de pagamento. Pasta B: depois de pagar no Mercado Pago, confirma ENTREGUE. Pasta C: recusa do orçamento (compensação) e falta de estoque. Use com o environment 'Workbench - AWS - Saga'.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "gatewayUrl",
+      "value": "https://rin3bn5vqi.execute-api.us-east-1.amazonaws.com/main",
+      "description": "Padrão: API Gateway da AWS (o environment sobrescreve)."
+    },
+    {
+      "key": "staffEmail",
+      "value": "admin@workbench.dev"
+    }
+  ],
+  "item": [
+    {
+      "name": "A. Saga feliz: do login até a cobrança",
+      "item": [
+        {
+          "name": "0. Login staff (gera dados novos)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/auth/login",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Gera CPF, placa, nome, e-mail e SKU NOVOS e faz o login da equipe. Rode a pasta sempre a partir deste passo.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{staffEmail}}\",\n  \"password\": \"{{staffPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Gera dados NOVOS a cada execução (CPF válido, placa, nome, e-mail, SKU) e limpa o estado anterior.",
+                  "function cpf() {",
+                  "  let d;",
+                  "  do {",
+                  "    d = []; for (let i = 0; i < 9; i++) d.push(Math.floor(Math.random() * 10));",
+                  "  } while (d.every(x => x === d[0]));",
+                  "  let s = 0; for (let i = 0; i < 9; i++) s += d[i] * (10 - i);",
+                  "  let r = (s * 10) % 11; d.push(r >= 10 ? 0 : r);",
+                  "  s = 0; for (let i = 0; i < 10; i++) s += d[i] * (11 - i);",
+                  "  r = (s * 10) % 11; d.push(r >= 10 ? 0 : r);",
+                  "  return d.join('');",
+                  "}",
+                  "const L = 'ABCDEFGHJKLMNPQRSTUVWXYZ';",
+                  "const letras = () => Array.from({length: 3}, () => L[Math.floor(Math.random() * L.length)]).join('');",
+                  "const sufixo = String(Date.now()).slice(-7);",
+                  "const nomes = ['Joana Prado', 'Carlos Menezes', 'Luiza Andrade', 'Rafael Tavares', 'Beatriz Nogueira', 'Marcos Vilela'];",
+                  "const carros = [['Fiat', 'Argo'], ['Chevrolet', 'Onix'], ['Hyundai', 'HB20'], ['Renault', 'Kwid'], ['Toyota', 'Etios']];",
+                  "const cores = ['Prata', 'Preto', 'Branco', 'Vermelho', 'Azul'];",
+                  "const pick = a => a[Math.floor(Math.random() * a.length)];",
+                  "const carro = pick(carros);",
+                  "const v = {",
+                  "  cpf: cpf(),",
+                  "  placa: letras() + '-' + String(Math.floor(Math.random() * 10000)).padStart(4, '0'),",
+                  "  nome: pick(nomes) + ' ' + sufixo,",
+                  "  email: 'saga' + sufixo + '@example.com',",
+                  "  telefone: '119' + String(Math.floor(Math.random() * 100000000)).padStart(8, '0'),",
+                  "  marca: carro[0], modelo: carro[1], cor: pick(cores),",
+                  "  ano: 2012 + Math.floor(Math.random() * 12),",
+                  "  sku: 'FILTRO-' + sufixo,",
+                  "  produto: 'Filtro de ar ' + sufixo",
+                  "};",
+                  "Object.keys(v).forEach(k => pm.collectionVariables.set(k, v[k]));",
+                  "['token', 'clientToken', 'clientId', 'productId', 'orderId', 'serviceId', 'gatewayPaymentId', 'checkoutUrl']",
+                  "  .forEach(k => pm.collectionVariables.unset(k));",
+                  "console.log('Dados desta execução:', JSON.stringify(v));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login 200 (se 401: selecione o environment \"Workbench - AWS - Saga\" e preencha staffPassword)', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  pm.collectionVariables.set('token', j.token);",
+                  "  pm.test('token JWT recebido', () => pm.expect(j.token).to.be.a('string').and.not.empty);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "0b. Sem token -> 401 (prova do authorizer)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/order",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order"
+              ]
+            },
+            "description": "",
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Gateway recusa chamada sem token (401)', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1. Criar cliente (customer-service)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/clients",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "clients"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{nome}}\",\n  \"document\": \"{{cpf}}\",\n  \"email\": \"{{email}}\",\n  \"phone\": \"{{telefone}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status ' + pm.response.code + ' esperado em [200, 201]', () => pm.expect([200, 201]).to.include(pm.response.code));",
+                  "if ([200, 201].includes(pm.response.code)) {",
+                  "  const v = ((pm.response.json().id));",
+                  "  if (v !== undefined && v !== null) pm.collectionVariables.set('clientId', v);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Criar veículo (customer-service)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/vehicles",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "vehicles"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientId\": {{clientId}},\n  \"plate\": \"{{placa}}\",\n  \"brand\": \"{{marca}}\",\n  \"model\": \"{{modelo}}\",\n  \"year\": {{ano}},\n  \"color\": \"{{cor}}\",\n  \"type\": \"CAR\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Veículo criado', () => pm.expect([200, 201]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Criar produto (execution-service / MongoDB)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/products",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "products"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{produto}}\",\n  \"sku\": \"{{sku}}\",\n  \"type\": \"PART\",\n  \"unit\": \"UNIT\",\n  \"category\": \"Filtros\",\n  \"brand\": \"Tecfil\",\n  \"costPrice\": 18.5,\n  \"salePrice\": 39.9,\n  \"warrantyMonths\": 3,\n  \"fractionalAllowed\": false,\n  \"packageSize\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status ' + pm.response.code + ' esperado em [200, 201]', () => pm.expect([200, 201]).to.include(pm.response.code));",
+                  "if ([200, 201].includes(pm.response.code)) {",
+                  "  const v = ((pm.response.json().id));",
+                  "  if (v !== undefined && v !== null) pm.collectionVariables.set('productId', v);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Criar estoque (50 unidades)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/stocks",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "stocks"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"productId\": \"{{productId}}\",\n  \"quantity\": 50,\n  \"minimumQuantity\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Estoque criado', () => pm.expect([200, 201]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Login cliente por CPF (Lambda)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/auth",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "auth"
+              ]
+            },
+            "description": "O cliente precisa existir (passo 1). A resposta traz o token que o CLIENTE usa para aprovar a OS.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cpf\": \"{{cpf}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Login do cliente 200', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) pm.collectionVariables.set('clientToken', pm.response.json().token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Criar OS (os-service valida cliente e placa por REST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/order",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cpfCnpj\": \"{{cpf}}\",\n  \"placaVeiculo\": \"{{placa}}\",\n  \"serviceTypes\": [\n    \"TROCA_OLEO\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status ' + pm.response.code + ' esperado em [201]', () => pm.expect([201]).to.include(pm.response.code));",
+                  "if ([201].includes(pm.response.code)) {",
+                  "  const v = ((pm.response.json().id));",
+                  "  if (v !== undefined && v !== null) pm.collectionVariables.set('orderId', v);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Registrar diagnóstico (dispara a Saga)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/{{orderId}}/diagnosis",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderId}}",
+                "diagnosis"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parts\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 2\n    }\n  ],\n  \"services\": [\n    {\n      \"serviceType\": \"TROCA_OLEO\",\n      \"laborCost\": 80.0,\n      \"useDefault\": false\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Diagnóstico aceito, Saga iniciada', () => pm.expect([200, 201, 202]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "8. Aguardar AGUARDANDO_APROVACAO (espera 12 s)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/id/{{orderId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "id",
+                "{{orderId}}"
+              ]
+            },
+            "description": "Reserva de estoque (execution) e orçamento (billing) acontecem por SNS/SQS. Se falhar, reenvie em alguns segundos."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(function () {}, 12000);  // dá tempo para a Saga/mensageria andar"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const want = 'AGUARDANDO_APROVACAO';",
+                  "const st = pm.response.code === 200 ? pm.response.json().serviceStatus : ('HTTP ' + pm.response.code);",
+                  "const key = 'tentativas_AGUARDANDO_APROVACAO_orderId';",
+                  "const n = Number(pm.collectionVariables.get(key) || 0) + 1;",
+                  "if (st !== want && n < 6) {",
+                  "  // Collection Runner: tenta de novo sozinho. Enviando um request só: reenvie em alguns segundos.",
+                  "  pm.collectionVariables.set(key, n);",
+                  "  console.log('OS em ' + st + ', esperando ' + want + ' (tentativa ' + n + ' de 6)');",
+                  "  try { pm.execution.setNextRequest(pm.info.requestName); } catch (e) { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "  pm.collectionVariables.unset(key);",
+                  "  pm.test('OS em ' + want + ' (atual: ' + st + ')', () => pm.expect(st).to.eql(want));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "8a. Estado da Saga",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/{{orderId}}/saga",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderId}}",
+                "saga"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Estado da Saga 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "console.log('Saga:', JSON.stringify({step: j.step, failureReason: j.failureReason}));",
+                  "pm.test('Sem motivo de falha', () => pm.expect(j.failureReason == null).to.be.true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "8b. Orçamento gerado (billing-service)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/budgets/service-order/{{orderId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "budgets",
+                "service-order",
+                "{{orderId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Orçamento 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "console.log('Orçamento:', JSON.stringify({totalParts: j.totalParts, totalLabor: j.totalLabor, totalPrice: j.totalPrice}));",
+                  "pm.test('totalPrice > 0', () => pm.expect(Number(j.totalPrice)).to.be.above(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "8c. Estoque reservado (execution-service)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/stocks/product/{{productId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "stocks",
+                "product",
+                "{{productId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Estoque 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "console.log('Estoque:', JSON.stringify({quantity: j.quantity, reservedQuantity: j.reservedQuantity}));",
+                  "pm.test('2 peças reservadas', () => pm.expect(Number(j.reservedQuantity)).to.eql(2));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "9. Cliente aprova o orçamento (token do CLIENTE)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/{{orderId}}/decision",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderId}}",
+                "decision"
+              ]
+            },
+            "description": "Usa o clientToken: o cliente só decide a OS do próprio CPF.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"APPROVED\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clientToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Aprovação aceita', () => pm.expect([200, 202, 204]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "9a. Aguardar APROVADO (espera 8 s)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/id/{{orderId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "id",
+                "{{orderId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(function () {}, 8000);  // dá tempo para a Saga/mensageria andar"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const want = 'APROVADO';",
+                  "const st = pm.response.code === 200 ? pm.response.json().serviceStatus : ('HTTP ' + pm.response.code);",
+                  "const key = 'tentativas_APROVADO_orderId';",
+                  "const n = Number(pm.collectionVariables.get(key) || 0) + 1;",
+                  "if (st !== want && n < 6) {",
+                  "  // Collection Runner: tenta de novo sozinho. Enviando um request só: reenvie em alguns segundos.",
+                  "  pm.collectionVariables.set(key, n);",
+                  "  console.log('OS em ' + st + ', esperando ' + want + ' (tentativa ' + n + ' de 6)');",
+                  "  try { pm.execution.setNextRequest(pm.info.requestName); } catch (e) { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "  pm.collectionVariables.unset(key);",
+                  "  pm.test('OS em ' + want + ' (atual: ' + st + ')', () => pm.expect(st).to.eql(want));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10. Iniciar execução (EM_EXECUCAO)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/{{orderId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"EM_EXECUCAO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('OS em execução (204)', () => pm.expect([200, 204]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11. Listar serviços da OS (captura serviceId)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/{{orderId}}/services",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderId}}",
+                "services"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Serviços 200', () => pm.response.to.have.status(200));",
+                  "const l = pm.response.json();",
+                  "pm.test('OS tem 1 serviço', () => pm.expect(l).to.be.an('array').with.lengthOf(1));",
+                  "if (l.length) pm.collectionVariables.set('serviceId', l[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11a. Serviço em andamento (TO_DO -> DOING)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/{{orderId}}/services/{{serviceId}}/status",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderId}}",
+                "services",
+                "{{serviceId}}",
+                "status"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"DOING\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Serviço em DOING', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11b. Serviço concluído (DOING -> DONE; o último DONE finaliza a OS)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/{{orderId}}/services/{{serviceId}}/status",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderId}}",
+                "services",
+                "{{serviceId}}",
+                "status"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"DONE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Serviço em DONE', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12. Marcar pagamento pendente (dispara a cobrança)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/{{orderId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PAGAMENTO_PENDENTE\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('OS em pagamento pendente (204)', () => pm.expect([200, 204]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "13. Buscar cobrança e link do Mercado Pago (espera 10 s)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/payments/service-order/{{orderId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "service-order",
+                "{{orderId}}"
+              ]
+            },
+            "description": "Copie o checkoutUrl (variável da collection e Console) e pague com o COMPRADOR DE TESTE do Mercado Pago."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(function () {}, 10000);  // o billing cria a preferência no Mercado Pago pela fila"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cobrança 200 (se 404: reenvie em alguns segundos)', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  pm.collectionVariables.set('gatewayPaymentId', j.gatewayPaymentId);",
+                  "  pm.collectionVariables.set('checkoutUrl', j.checkoutUrl);",
+                  "  pm.test('checkoutUrl do Mercado Pago', () => pm.expect(j.checkoutUrl).to.match(/mercado/i));",
+                  "  console.log('>>> PAGUE AQUI: ' + j.checkoutUrl);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "B. Depois de pagar no Mercado Pago",
+      "item": [
+        {
+          "name": "14. Aguardar ENTREGUE (o job consulta o Mercado Pago a cada 30 s)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/id/{{orderId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "id",
+                "{{orderId}}"
+              ]
+            },
+            "description": "Rode DEPOIS de pagar no checkoutUrl. No Runner tenta até 8 vezes (15 s cada); avulso, reenvie."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(function () {}, 15000);  // dá tempo para a Saga/mensageria andar"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const want = 'ENTREGUE';",
+                  "const st = pm.response.code === 200 ? pm.response.json().serviceStatus : ('HTTP ' + pm.response.code);",
+                  "const key = 'tentativas_ENTREGUE_orderId';",
+                  "const n = Number(pm.collectionVariables.get(key) || 0) + 1;",
+                  "if (st !== want && n < 8) {",
+                  "  // Collection Runner: tenta de novo sozinho. Enviando um request só: reenvie em alguns segundos.",
+                  "  pm.collectionVariables.set(key, n);",
+                  "  console.log('OS em ' + st + ', esperando ' + want + ' (tentativa ' + n + ' de 8)');",
+                  "  try { pm.execution.setNextRequest(pm.info.requestName); } catch (e) { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "  pm.collectionVariables.unset(key);",
+                  "  pm.test('OS em ' + want + ' (atual: ' + st + ')', () => pm.expect(st).to.eql(want));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "15. Histórico do pagamento",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/payments/service-order/{{orderId}}/history",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "payments",
+                "service-order",
+                "{{orderId}}",
+                "history"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Histórico 200', () => pm.response.to.have.status(200));",
+                  "console.log('Histórico:', pm.response.text().slice(0, 500));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "16. Estado final da Saga",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/{{orderId}}/saga",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderId}}",
+                "saga"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Saga 200', () => pm.response.to.have.status(200));",
+                  "console.log('Saga final:', pm.response.text().slice(0, 500));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "C. Falhas e compensação (rode depois da A)",
+      "item": [
+        {
+          "name": "C1. Nova OS para o cenário de recusa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/order",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order"
+              ]
+            },
+            "description": "Rode depois da pasta A (usa o mesmo cliente, veículo e produto).",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cpfCnpj\": \"{{cpf}}\",\n  \"placaVeiculo\": \"{{placa}}\",\n  \"serviceTypes\": [\n    \"TROCA_OLEO\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status ' + pm.response.code + ' esperado em [201]', () => pm.expect([201]).to.include(pm.response.code));",
+                  "if ([201].includes(pm.response.code)) {",
+                  "  const v = ((pm.response.json().id));",
+                  "  if (v !== undefined && v !== null) pm.collectionVariables.set('orderIdRecusa', v);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C2. Diagnóstico com 3 peças (reserva 3 no estoque)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/{{orderIdRecusa}}/diagnosis",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderIdRecusa}}",
+                "diagnosis"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parts\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 3\n    }\n  ],\n  \"services\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Diagnóstico aceito', () => pm.expect([200, 201, 202]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C3. Aguardar AGUARDANDO_APROVACAO (espera 12 s)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/id/{{orderIdRecusa}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "id",
+                "{{orderIdRecusa}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(function () {}, 12000);  // dá tempo para a Saga/mensageria andar"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const want = 'AGUARDANDO_APROVACAO';",
+                  "const st = pm.response.code === 200 ? pm.response.json().serviceStatus : ('HTTP ' + pm.response.code);",
+                  "const key = 'tentativas_AGUARDANDO_APROVACAO_orderIdRecusa';",
+                  "const n = Number(pm.collectionVariables.get(key) || 0) + 1;",
+                  "if (st !== want && n < 6) {",
+                  "  // Collection Runner: tenta de novo sozinho. Enviando um request só: reenvie em alguns segundos.",
+                  "  pm.collectionVariables.set(key, n);",
+                  "  console.log('OS em ' + st + ', esperando ' + want + ' (tentativa ' + n + ' de 6)');",
+                  "  try { pm.execution.setNextRequest(pm.info.requestName); } catch (e) { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "  pm.collectionVariables.unset(key);",
+                  "  pm.test('OS em ' + want + ' (atual: ' + st + ')', () => pm.expect(st).to.eql(want));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C4. Estoque com 3 peças reservadas",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/stocks/product/{{productId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "stocks",
+                "product",
+                "{{productId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Estoque 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "console.log('Estoque antes da recusa:', JSON.stringify({quantity: j.quantity, reservedQuantity: j.reservedQuantity}));",
+                  "pm.test('3 peças reservadas', () => pm.expect(Number(j.reservedQuantity)).to.eql(3));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C5. Cliente RECUSA o orçamento (token do cliente)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/{{orderIdRecusa}}/decision",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderIdRecusa}}",
+                "decision"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"decision\": \"REJECTED\",\n  \"reason\": \"Valor acima do esperado\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{clientToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Recusa aceita', () => pm.expect([200, 202, 204]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C6. Aguardar RECUSADA (espera 10 s)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/id/{{orderIdRecusa}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "id",
+                "{{orderIdRecusa}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(function () {}, 10000);  // dá tempo para a Saga/mensageria andar"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const want = 'RECUSADA';",
+                  "const st = pm.response.code === 200 ? pm.response.json().serviceStatus : ('HTTP ' + pm.response.code);",
+                  "const key = 'tentativas_RECUSADA_orderIdRecusa';",
+                  "const n = Number(pm.collectionVariables.get(key) || 0) + 1;",
+                  "if (st !== want && n < 6) {",
+                  "  // Collection Runner: tenta de novo sozinho. Enviando um request só: reenvie em alguns segundos.",
+                  "  pm.collectionVariables.set(key, n);",
+                  "  console.log('OS em ' + st + ', esperando ' + want + ' (tentativa ' + n + ' de 6)');",
+                  "  try { pm.execution.setNextRequest(pm.info.requestName); } catch (e) { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "  pm.collectionVariables.unset(key);",
+                  "  pm.test('OS em ' + want + ' (atual: ' + st + ')', () => pm.expect(st).to.eql(want));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C7. COMPENSAÇÃO: reserva liberada (reservedQuantity volta a 0)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/stocks/product/{{productId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "stocks",
+                "product",
+                "{{productId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(function () {}, 4000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Estoque 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "console.log('Estoque depois da compensação:', JSON.stringify({quantity: j.quantity, reservedQuantity: j.reservedQuantity}));",
+                  "pm.test('reserva liberada (0)', () => pm.expect(Number(j.reservedQuantity)).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C8. Estado da Saga após a recusa",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/{{orderIdRecusa}}/saga",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderIdRecusa}}",
+                "saga"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Saga 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "console.log('Saga após a recusa:', JSON.stringify({step: j.step, failureReason: j.failureReason}));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C9. Nova OS para o cenário sem estoque",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/order",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cpfCnpj\": \"{{cpf}}\",\n  \"placaVeiculo\": \"{{placa}}\",\n  \"serviceTypes\": [\n    \"TROCA_OLEO\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status ' + pm.response.code + ' esperado em [201]', () => pm.expect([201]).to.include(pm.response.code));",
+                  "if ([201].includes(pm.response.code)) {",
+                  "  const v = ((pm.response.json().id));",
+                  "  if (v !== undefined && v !== null) pm.collectionVariables.set('orderIdSemEstoque', v);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C10. Diagnóstico pedindo 999 peças (só há 50)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/{{orderIdSemEstoque}}/diagnosis",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderIdSemEstoque}}",
+                "diagnosis"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"parts\": [\n    {\n      \"productId\": \"{{productId}}\",\n      \"quantity\": 999\n    }\n  ],\n  \"services\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Diagnóstico aceito, a Saga vai falhar na reserva', () => pm.expect([200, 201, 202]).to.include(pm.response.code));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C11. Estado da Saga sem estoque (espera 15 s)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/order/{{orderIdSemEstoque}}/saga",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "order",
+                "{{orderIdSemEstoque}}",
+                "saga"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "setTimeout(function () {}, 15000);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Saga 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "console.log('Saga sem estoque:', JSON.stringify({step: j.step, failureReason: j.failureReason}));",
+                  "pm.test('Saga registra o motivo da falha', () => pm.expect(j.failureReason).to.be.a('string').and.not.empty);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "C12. Estoque intacto (nada ficou preso)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{gatewayUrl}}/api/stocks/product/{{productId}}",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "api",
+                "stocks",
+                "product",
+                "{{productId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Estoque 200', () => pm.response.to.have.status(200));",
+                  "const j = pm.response.json();",
+                  "pm.test('nenhuma peça reservada', () => pm.expect(Number(j.reservedQuantity)).to.eql(0));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "D. Monitoramento",
+      "item": [
+        {
+          "name": "D1. Tempo médio por tipo de serviço (monitoring)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{gatewayUrl}}/monitoring/all",
+              "host": [
+                "{{gatewayUrl}}"
+              ],
+              "path": [
+                "monitoring",
+                "all"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"timeUnit\": \"MINUTES\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Monitoring 200', () => pm.response.to.have.status(200));",
+                  "console.log('Monitoring:', pm.response.text().slice(0, 400));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
