@@ -66,10 +66,21 @@ Passo a passo completo para **ligar** a stack na AWS, **testar/gravar o vídeo**
 
 > **Estratégia:** ligar → testar → destruir no mesmo dia. O EKS não tem "pausar":
 > ou está criado (cobrando) ou destruído. Custo estimado com tudo ligado:
-> **~US$ 7–10/dia** (estimativa: EKS control plane ~US$0,10/h + NAT Gateway ~US$0,045/h +
-> 2× nós t3.medium + 3× RDS db.t3.micro + 4 NLBs internos; a chave KMS dos tópicos soma ~US$ 1/mês).
-> Os nós são `t3.medium` porque, com `t3.small`, o rolling update dos serviços e o agente do Datadog
-> (~1 GiB) não cabiam na memória; a troca soma cerca de US$ 1/dia (preço de tabela, confirme no console).
+> **~US$ 11/dia** (estimativa com preços de tabela, sem tráfego/EBS/logs: EKS control plane ~US$0,10/h + NAT Gateway ~US$0,045/h +
+> 2× nós c7i-flex.large + 3× RDS db.t3.micro + 4 NLBs internos; a chave KMS dos tópicos soma ~US$ 1/mês).
+> Os nós são `c7i-flex.large` (4 GiB, ~US$ 0,085/h por nó, ~US$ 4/dia nos 2) porque, com `t3.small`, o rolling
+> update dos serviços e o agente do Datadog (~1 GiB) não cabiam na memória (preços da API de preços da AWS,
+> us-east-1, on-demand; confirme no console).
+>
+> [!warning] Conta no plano FREE: só tipos `free-tier-eligible`
+> Se a conta estiver no plano gratuito da AWS (`aws freetier get-account-plan-state` → `accountPlanType: FREE`),
+> o EC2 **recusa** tipos fora da lista, e o `terraform plan` **não avisa**: o grupo de nós fica `CREATING` por
+> dezenas de minutos sem nenhuma instância, e o Auto Scaling registra
+> `InvalidParameterCombination: The specified instance type is not eligible for Free Tier`.
+> O `aws ec2 run-instances --dry-run` também **aceita** tipos recusados; só um lançamento real prova.
+> Elegíveis com memória suficiente: `c7i-flex.large` (4 GiB) e `m7i-flex.large` (8 GiB). `t3.medium` **não** é elegível.
+> Para provar um tipo antes de trocar: lance 1 instância real (`aws ec2 run-instances ... --instance-type <tipo>`),
+> confirme que foi aceita e termine-a em seguida (`aws ec2 terminate-instances`).
 >
 > **Recriação:** os endpoints do RDS e os DNS dos NLBs mudam a cada vez que a stack é
 > recriada. Depois da FASE 3, atualize os `DB_URL_*_MAIN`; depois da FASE 6, o
@@ -558,7 +569,8 @@ Nada disso roda sem as chaves abaixo: o pipeline pula o Datadog e o app reclama 
 4 serviços, e a variável `DD_SITE=datadoghq.com`.
 
 **3. Memória:** o agente pede ~384 Mi por nó (agent + trace-agent) mais 256 Mi do cluster agent, **~1 GiB**.
-Com 2 nós `t3.small` ele não cabe; por isso os nós são `t3.medium` (variável `node_instance_type`).
+Com 2 nós `t3.small` ele não cabe; por isso os nós são `c7i-flex.large` (variável `node_instance_type`; no plano FREE,
+só tipos elegíveis ao Free Tier: ver o aviso no início do guia).
 
 **4. Deploy:** refaça o deploy dos 4 serviços (*Actions → última execução na `main` → Re-run all jobs*, ou o
 merge de qualquer PR). O `datadog-config` aplica 5 dashboards e 13 monitors (os do `os-service` e os de cada serviço); o `deploy-aws` instala o agente.
