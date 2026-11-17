@@ -32,7 +32,8 @@ aliases:
 > | `ADMIN_INITIAL_PASSWORD` | FASE 2: sem ele o customer-service **não sobe** |
 > | `MONGODB_URI` | FASE 3.1 (Atlas) |
 > | `CUSTOMER_SERVICE_URL_MAIN` | FASE 5 com `http://pendente:8080`; valor real na FASE 8 |
-> | `SES_SENDER_EMAIL`, `DD_API_KEY` | opcionais: e-mail direto ao cliente (FASE 4) e Datadog |
+> | `DD_API_KEY`, `DD_APP_KEY` (e a variável `DD_SITE=datadoghq.com`) | Datadog: métricas, logs, APM e a criação dos dashboards/monitors. Sem elas o app reclama da chave a cada minuto e o pipeline pula o Datadog |
+> | `SES_SENDER_EMAIL` | opcional: e-mail direto ao cliente (FASE 4) |
 > | variável `USE_AWS=true` | FASE 6: sem ela o `deploy-aws` dos apps fica *skipped* |
 > | `JWT_SECRET` | pode existir, mas **não é mais usado** (o HS256 saiu): apague |
 >
@@ -66,7 +67,9 @@ Passo a passo completo para **ligar** a stack na AWS, **testar/gravar o vídeo**
 > **Estratégia:** ligar → testar → destruir no mesmo dia. O EKS não tem "pausar":
 > ou está criado (cobrando) ou destruído. Custo estimado com tudo ligado:
 > **~US$ 7–10/dia** (estimativa: EKS control plane ~US$0,10/h + NAT Gateway ~US$0,045/h +
-> 2× nós t3.small + 3× RDS db.t3.micro + 4 NLBs internos; a chave KMS dos tópicos soma ~US$ 1/mês).
+> 2× nós t3.medium + 3× RDS db.t3.micro + 4 NLBs internos; a chave KMS dos tópicos soma ~US$ 1/mês).
+> Os nós são `t3.medium` porque, com `t3.small`, o rolling update dos serviços e o agente do Datadog
+> (~1 GiB) não cabiam na memória; a troca soma cerca de US$ 1/dia (preço de tabela, confirme no console).
 >
 > **Recriação:** os endpoints do RDS e os DNS dos NLBs mudam a cada vez que a stack é
 > recriada. Depois da FASE 3, atualize os `DB_URL_*_MAIN`; depois da FASE 6, o
@@ -416,7 +419,7 @@ Também precisa de `JWT_PRIVATE_KEY` e `JWT_PUBLIC_KEY` (FASE 2): o CD para no i
 `DB_URL_BILLING_MAIN`+`DB_USERNAME_BILLING`+`DB_PASSWORD_BILLING` (billing),
 `DB_URL_CUSTOMER_MAIN`+`DB_USERNAME_CUSTOMER`+`DB_PASSWORD_CUSTOMER` (customer),
 `MONGODB_URI` (execution) — além de `JWT_PUBLIC_KEY` (igual em todos), `JWT_SERVICE_PRIVATE_KEY` (os), `JWT_SERVICE_PUBLIC_KEY` (customer), `MP_ACCESS_TOKEN`
-(billing), `ADMIN_INITIAL_PASSWORD` (customer, no 1º deploy) e (opcional) `DD_API_KEY`.
+(billing), `ADMIN_INITIAL_PASSWORD` (customer, no 1º deploy) e `DD_API_KEY` + `DD_APP_KEY` (Datadog).
 
 **O que o pipeline faz sozinho em cada deploy:**
 - Valida os secrets obrigatórios e para no início se faltar algum.
@@ -451,7 +454,7 @@ Também precisa de `JWT_PRIVATE_KEY` e `JWT_PUBLIC_KEY` (FASE 2): o CD para no i
   | customer | `DB_URL_CUSTOMER_MAIN`, `DB_USERNAME_CUSTOMER`, `DB_PASSWORD_CUSTOMER`, `JWT_PUBLIC_KEY`, `JWT_SERVICE_PUBLIC_KEY` |
   | execution | `MONGODB_URI`, `JWT_PUBLIC_KEY` |
 
-  (`DD_API_KEY` é opcional em todos; em `develop` usa os `DB_URL_*_DEVELOP`.) Um passo
+  (`DD_API_KEY`/`DD_APP_KEY` alimentam o Datadog; em `develop` usa os `DB_URL_*_DEVELOP`.) Um passo
   **"Validar secrets obrigatórios"** derruba o job logo no início se algum estiver
   vazio — então crie todos **antes** de mergear. Nunca commite valor real no
   `secret.yaml`.
@@ -529,6 +532,50 @@ Ponha esse valor no secret `CUSTOMER_SERVICE_URL_MAIN` e rode o CD do `workbench
 de novo (Actions → **CD** → **Re-run all jobs**).
 
 ---
+
+## FASE 9 — Monitoramento no Datadog (métricas, logs, APM, dashboards e monitors)
+
+**O que faz:** o deploy dos 4 serviços (FASE 6) instala o agente do Datadog no cluster (Helm), injeta o
+agente Java nos pods (APM) e aplica os **dashboards e monitors** versionados em `datadog/` de cada serviço.
+Nada disso roda sem as chaves abaixo: o pipeline pula o Datadog e o app reclama da chave a cada minuto.
+
+**Três fontes de dados, três requisitos:**
+
+| O que aparece | Métricas | Precisa de |
+|---|---|---|
+| CPU e memória dos pods | `kubernetes.*` | o agente no cluster (Helm) |
+| Negócio: OS criadas, tempo por status, falhas | `workshop.*` | só `DD_API_KEY` (o app envia sozinho) |
+| Latência, erros, requisições | `trace.servlet.request.*` | APM: label `admission.datadoghq.com/enabled: "true"` nos pods |
+
+**1. Chaves (no Datadog, site US1: tem de abrir em `app.datadoghq.com`)**
+- *Organization Settings → API Keys → New Key* → `DD_API_KEY`.
+- *Organization Settings → Application Keys → New Key*, com os escopos `dashboards_read`,
+  `dashboards_write`, `monitors_read` e `monitors_write` → `DD_APP_KEY`.
+- Se a sua conta for de outro site (`.eu`, `us3.`, `us5.`), a chave dá o mesmo erro de "invalid": ajuste a
+  variável `DD_SITE` e o `site`/`DD_METRICS_URI` dos manifestos.
+
+**2. GitHub (organização):** secrets `DD_API_KEY` e `DD_APP_KEY` (aba **Secrets**, não Variables) com acesso aos
+4 serviços, e a variável `DD_SITE=datadoghq.com`.
+
+**3. Memória:** o agente pede ~384 Mi por nó (agent + trace-agent) mais 256 Mi do cluster agent, **~1 GiB**.
+Com 2 nós `t3.small` ele não cabe; por isso os nós são `t3.medium` (variável `node_instance_type`).
+
+**4. Deploy:** refaça o deploy dos 4 serviços (*Actions → última execução na `main` → Re-run all jobs*, ou o
+merge de qualquer PR). O `datadog-config` aplica 5 dashboards e 13 monitors (os do `os-service` e os de cada serviço); o `deploy-aws` instala o agente.
+
+**5. Conferir**
+```bash
+kubectl get pods -n datadog                                  # agentes e cluster agent: Running
+kubectl logs -n os-service deploy/os-service | grep -i datadog   # a reclamação da chave deve sumir
+kubectl get pod -n os-service -l app=os-service -o jsonpath='{.items[0].spec.initContainers[*].name}'   # init de injeção do Datadog
+```
+No Datadog: *Dashboards* ("Workbench | Visão Geral da Plataforma", "OS Service | Operação"…), *Infrastructure →
+Kubernetes*, *APM → Services* e *Logs*. **Gere tráfego antes** (o fluxo da OS): sem requisições os gráficos de
+latência ficam vazios.
+
+> [!warning] Se o APM não aparecer
+> Se os pods subiram **antes** de o admission controller estar pronto (primeiro deploy), eles não receberam o
+> agente Java. Reinicie: `kubectl rollout restart deployment/<serviço> -n <serviço>`.
 
 ## ✅ Testar / Gravar o vídeo
 
@@ -655,7 +702,7 @@ custa centavos — ou apague com `aws s3 rb s3://"$TF_BUCKET" --force`.)
 - [ ] 2. outputs → secrets (VPC_ID_MAIN, SUBNET_IDS_MAIN, VPC_SECURITY_GROUP_IDS_MAIN, DB_PASSWORD_OS/BILLING/CUSTOMER, DB_USERNAME_OS/BILLING/CUSTOMER = os_service/billing/customer, JWT_PRIVATE_KEY/JWT_PUBLIC_KEY/JWT_SERVICE_PRIVATE_KEY/JWT_SERVICE_PUBLIC_KEY)
 - [ ] 3. database — mergear PR na main → 3 RDS; `terraform output -json service_jdbc_urls` → criar DB_URL_OS_MAIN, DB_URL_BILLING_MAIN, DB_URL_CUSTOMER_MAIN
 - [ ] 3.1 MongoDB Atlas — cluster `fiap-db-mongo` ✅; criar usuário `execution`, network access 0.0.0.0/0; criar secret MONGODB_URI
-- [ ] 2b. secrets dos apps: MP_ACCESS_TOKEN, ADMIN_INITIAL_PASSWORD (e DD_API_KEY, opcional)
+- [ ] 2b. secrets dos apps: MP_ACCESS_TOKEN, ADMIN_INITIAL_PASSWORD, DD_API_KEY e DD_APP_KEY (Datadog)
 - [ ] 4. messaging — terraform apply (terminal) com notification_email e alert_email; confirmar os 2 e-mails
 - [ ] 5. lambda — CUSTOMER_SERVICE_URL_MAIN=http://pendente:8080; mergear PR na main
 - [ ] 6. apps — variable USE_AWS=true + mergear PRs dos 4 serviços (e o do messaging)
