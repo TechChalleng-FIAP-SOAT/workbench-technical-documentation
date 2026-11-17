@@ -291,8 +291,20 @@ no EKS em produção. Não há Terraform aqui: o Atlas é criado no painel, **um
    por usuário/senha; para endurecer, libere só o IP do NAT Gateway da VPC.
 4. **Connect → Drivers → Java:** copie a string
    `mongodb+srv://execution:<db_password>@fiap-db-mongo.xxxxx.mongodb.net/?retryWrites=true&w=majority&appName=fiap-db-mongo`
-   e ajuste: troque `<db_password>` pela senha do passo 2 e insira o banco antes do
-   `?` → `...mongodb.net/execution?retryWrites=...`.
+   e faça **dois** ajustes:
+   - troque `<db_password>` pela senha do passo 2;
+   - **insira o nome do banco `execution` entre o `/` e o `?`** →
+     `...mongodb.net/execution?retryWrites=...`.
+
+> [!warning] Sem o `/execution` o execution-service não sobe
+> O Atlas entrega a URI **sem** o nome do banco (`...mongodb.net/?retryWrites=...`). Com ela o
+> pod entra em `CrashLoopBackOff` com `IllegalArgumentException: Database name must not be empty`
+> (veja com `kubectl logs -n execution-service <pod> --previous`). A URI certa tem uma palavra
+> entre a barra e a interrogação. Para conferir sem imprimir a senha:
+> ```bash
+> # cole a URI no lugar de <URI> (a senha fica só neste terminal)
+> python3 -c "import re,sys; m=re.match(r'^mongodb(\+srv)?://[^/]+/([^?]*)',sys.argv[1]); print('OK, banco =', m.group(2)) if m and m.group(2) else print('FALTA o /execution antes do ?')" '<URI>'
+> ```
 
 > O Atlas M0 **não gera custo** e pode ficar criado entre um teste e outro — só a AWS
 > precisa ser destruída.
