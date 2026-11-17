@@ -585,7 +585,7 @@ Com 2 nós `t3.small` ele não cabe; por isso os nós são `c7i-flex.large` (var
 só tipos elegíveis ao Free Tier: ver o aviso no início do guia).
 
 **4. Deploy:** refaça o deploy dos 4 serviços (*Actions → última execução na `main` → Re-run all jobs*, ou o
-merge de qualquer PR). O `datadog-config` aplica 5 dashboards e 13 monitors (os do `os-service` e os de cada serviço); o `deploy-aws` instala o agente.
+merge de qualquer PR). O `datadog-config` aplica 6 dashboards e 13 monitors (os do `os-service` e os de cada serviço); o `deploy-aws` instala o agente.
 
 **5. Conferir**
 ```bash
@@ -593,7 +593,7 @@ kubectl get pods -n datadog                                  # agentes e cluster
 kubectl logs -n os-service deploy/os-service | grep -i datadog   # a reclamação da chave deve sumir
 kubectl get pod -n os-service -l app=os-service -o jsonpath='{.items[0].spec.initContainers[*].name}'   # init de injeção do Datadog
 ```
-No Datadog: *Dashboards* ("Workbench | Visão Geral da Plataforma", "OS Service | Operação"…), *Infrastructure →
+No Datadog: *Dashboards* ("Workbench | Visão Geral da Plataforma", "Workbench | Requisições por Serviço e URL", "OS Service | Operação"…), *Infrastructure →
 Kubernetes*, *APM → Services* e *Logs*. **Gere tráfego antes** (o fluxo da OS): sem requisições os gráficos de
 latência ficam vazios.
 
